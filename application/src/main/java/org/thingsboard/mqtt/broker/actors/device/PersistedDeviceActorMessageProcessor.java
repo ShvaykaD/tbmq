@@ -41,6 +41,7 @@ import org.thingsboard.mqtt.broker.common.util.DonAsynchron;
 import org.thingsboard.mqtt.broker.dao.client.device.DevicePacketIdAndSerialNumberService;
 import org.thingsboard.mqtt.broker.dao.client.device.DeviceSessionCtxService;
 import org.thingsboard.mqtt.broker.dao.client.device.PacketIdAndSerialNumber;
+import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgCacheService;
 import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgService;
 import org.thingsboard.mqtt.broker.dto.PacketIdAndSerialNumberDto;
 import org.thingsboard.mqtt.broker.dto.SharedSubscriptionPublishPacket;
@@ -70,6 +71,7 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
 
     private final String clientId;
     private final DeviceMsgService deviceMsgService;
+    private final DeviceMsgCacheService deviceMsgCacheService;
     private final DeviceSessionCtxService deviceSessionCtxService;
     private final DevicePacketIdAndSerialNumberService serialNumberService;
     private final PublishMsgDeliveryService publishMsgDeliveryService;
@@ -93,6 +95,7 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
         super(systemContext);
         this.clientId = clientId;
         this.deviceMsgService = systemContext.getDeviceMsgService();
+        this.deviceMsgCacheService = systemContext.getDeviceMsgCacheService();
         this.deviceSessionCtxService = systemContext.getDeviceSessionCtxService();
         this.serialNumberService = systemContext.getSerialNumberService();
         this.publishMsgDeliveryService = systemContext.getPublishMsgDeliveryService();
@@ -108,7 +111,10 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
         }
         this.sessionCtx = msg.getSessionCtx();
         this.stopActorCommandUUID = null;
-        List<DevicePublishMsg> persistedMessages = deviceMsgService.findPersistedMessages(clientId);
+        // TODO: postgres impl. Consider to remove.
+//         List<DevicePublishMsg> persistedMessages = deviceMsgService.findPersistedMessages(clientId);
+        // TODO: replace with correct method that based on limit.
+        List<DevicePublishMsg> persistedMessages = deviceMsgCacheService.findPersistedMessages(clientId, 1, 10);
         try {
             persistedMessages.forEach(this::deliverPersistedMsg);
         } catch (Exception e) {

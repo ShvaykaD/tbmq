@@ -1,12 +1,12 @@
 /**
  * Copyright © 2016-2024 The Thingsboard Authors
- * <p>
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * <p>
- * http://www.apache.org/licenses/LICENSE-2.0
- * <p>
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -31,21 +31,25 @@ import java.util.concurrent.TimeUnit;
 @EqualsAndHashCode
 public class DevicePublishMsgRedisEntity implements ToData<DevicePublishMsg> {
 
-    private final String clientId;
-    private final Long serialNumber;
-    private final String topic;
-    private final Long time;
-    private final Integer packetId;
-    private final PersistedPacketType packetType;
-    private final Integer qos;
-    private final byte[] payload;
-    private final String userProperties;
-    private final boolean retain;
-    private final Integer msgExpiryInterval;
-    private final Integer payloadFormatIndicator;
-    private final String contentType;
-    private final String responseTopic;
-    private final byte[] correlationData;
+    private String clientId;
+    private Long serialNumber;
+    private String topic;
+    private Long time;
+    private Integer packetId;
+    private PersistedPacketType packetType;
+    private Integer qos;
+    private byte[] payload;
+    private String userProperties;
+    private boolean retain;
+    private Integer msgExpiryInterval;
+    private Integer payloadFormatIndicator;
+    private String contentType;
+    private String responseTopic;
+    private byte[] correlationData;
+
+    public DevicePublishMsgRedisEntity() {
+
+    }
 
     public DevicePublishMsgRedisEntity(DevicePublishMsg devicePublishMsg, long defaultTtl) {
         this.clientId = devicePublishMsg.getClientId();

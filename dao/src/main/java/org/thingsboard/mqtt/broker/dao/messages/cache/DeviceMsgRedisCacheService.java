@@ -1,3 +1,18 @@
+/**
+ * Copyright © 2016-2024 The Thingsboard Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.thingsboard.mqtt.broker.dao.messages.cache;
 
 import jakarta.annotation.PostConstruct;
@@ -5,6 +20,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.DependsOn;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.ReturnType;
 import org.springframework.data.redis.connection.jedis.JedisClusterConnection;
@@ -25,11 +42,15 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @ConditionalOnProperty(prefix = "cache", value = "type", havingValue = "redis")
 @RequiredArgsConstructor
+// TODO: fix this depends on and lazy.
+@DependsOn("redisConnectionFactory")
+@Lazy
 public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
 
     @Value("${mqtt.persistent-session.device.persisted-messages.ttl}")
@@ -43,8 +64,8 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
 //    private final TbRedisSerializer<ClientIdMessageCacheKey, DevicePublishMsg> valueSerializer = new TbJsonRedisSerializer<>(DevicePublishMsg.class);
 
     private static final JedisPool MOCK_POOL = new JedisPool(); //non-null pool required for JedisConnection to trigger closing jedis connection
-    private static final byte[] ADD_MESSAGES_SCRIPT_SHA = StringRedisSerializer.UTF_8.serialize("b0fc55122be0a5f19601892a3d5ac156ce01f102");
-    private static final byte[] GET_MESSAGES_IN_RANGE_SCRIPT_SHA = StringRedisSerializer.UTF_8.serialize("01a4966ad295170f390fc181a788f40928a5811e");
+    private static final byte[] ADD_MESSAGES_SCRIPT_SHA = StringRedisSerializer.UTF_8.serialize("924df4360dd4c9be95fda488a7c85d2668a29b91");
+    private static final byte[] GET_MESSAGES_IN_RANGE_SCRIPT_SHA = StringRedisSerializer.UTF_8.serialize("10e80dae3ee236743bfe132c89bd3d58f19bf4bf");
 
     @PostConstruct
     public void init() {
@@ -66,17 +87,17 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
             clientIdToMsgList.computeIfAbsent(devicePublishMessage.getClientId(), k -> new ArrayList<>()).add(redisEntity);
         }
         clientIdToMsgList.forEach((clientId, messages) -> {
-            byte[] rawLastInfoKey = toClientLastInfoKey(clientId);
-            byte[] rawSetKey = toClientIdMessageCacheKey(clientId);
+            byte[] rawLastPacketIdKey = toLastPacketIdKey(clientId);
+            byte[] rawMessagesKey = toMessagesCacheKey(clientId);
             byte[] messagesBytes = JacksonUtil.writeValueAsBytes(messages);
-            try (var connection = getConnection(rawSetKey)) {
+            try (var connection = getConnection(rawMessagesKey)) {
                 try {
                     connection.scriptingCommands().evalSha(
                             Objects.requireNonNull(ADD_MESSAGES_SCRIPT_SHA),
                             ReturnType.INTEGER,
                             2,
-                            rawSetKey,
-                            rawLastInfoKey,
+                            rawMessagesKey,
+                            rawLastPacketIdKey,
                             messagesBytes
                     );
                 } catch (Exception e) {
@@ -87,13 +108,39 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
     }
 
     @Override
-    public List<DevicePublishMsg> findPersistedMessages(String clientId, long fromSerialNumber, long toSerialNumber) {
+    public List<DevicePublishMsg> findPersistedMessages(String clientId, long fromPacketId, long toPacketId) {
+        byte[] rawMessagesKey = toMessagesCacheKey(clientId);
+        byte[] fromPacketIdBytes = keySerializer.serialize(Long.toString(fromPacketId));
+        byte[] toPacketIdBytes = keySerializer.serialize(Long.toString(toPacketId));
+
+        try (var connection = getConnection(rawMessagesKey)) {
+            try {
+                List<byte[]> messagesBytes = connection.scriptingCommands().evalSha(
+                        Objects.requireNonNull(GET_MESSAGES_IN_RANGE_SCRIPT_SHA),
+                        ReturnType.MULTI,
+                        1,
+                        rawMessagesKey,
+                        fromPacketIdBytes,
+                        toPacketIdBytes
+                );
+                log.info("{}", messagesBytes);
+                return Objects.requireNonNull(messagesBytes)
+                        .stream().map(DeviceMsgRedisCacheService::toData)
+                        .toList();
+            } catch (Exception e) {
+                log.error("error while search for device publish messages in range!", e);
+            }
+        }
         return List.of();
     }
 
-    private byte[] toClientIdMessageCacheKey(String clientId) {
-        ClientIdMessageCacheKey clientIdMessageCacheKey = new ClientIdMessageCacheKey(clientId);
-        String stringValue = clientIdMessageCacheKey.toString();
+    private static DevicePublishMsg toData(byte[] bytes) {
+        return Objects.requireNonNull(JacksonUtil.fromBytes(bytes, DevicePublishMsgRedisEntity.class)).toData();
+    }
+
+    private byte[] toMessagesCacheKey(String clientId) {
+        ClientIdMessagesCacheKey clientIdMessagesCacheKey = new ClientIdMessagesCacheKey(clientId);
+        String stringValue = clientIdMessagesCacheKey.toString();
         byte[] rawKey;
         try {
             rawKey = keySerializer.serialize(stringValue);
@@ -106,9 +153,9 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
         return rawKey;
     }
 
-    private byte[] toClientLastInfoKey(String clientId) {
-        ClientIdLastInfoCacheKey clientIdLastInfoCacheKey = new ClientIdLastInfoCacheKey(clientId);
-        String stringValue = clientIdLastInfoCacheKey.toString();
+    private byte[] toLastPacketIdKey(String clientId) {
+        ClientIdLastPacketIdCacheKey clientIdLastPacketIdCacheKey = new ClientIdLastPacketIdCacheKey(clientId);
+        String stringValue = clientIdLastPacketIdCacheKey.toString();
         byte[] rawKey;
         try {
             rawKey = keySerializer.serialize(stringValue);
@@ -141,11 +188,11 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
         log.debug("Loading LUA with expected SHA [{}], connection [{}]", scriptShaStr, connection.getNativeConnection());
         byte[] scriptBytes = StringRedisSerializer.UTF_8.serialize("""
                 local messagesKey = KEYS[1]
-                local fromSerial = tonumber(ARGV[1])
-                local toSerial = tonumber(ARGV[2])
+                local fromPacketId = ARGV[1]
+                local toPacketId = ARGV[2]
                 
                 -- Get the range of elements from the sorted set
-                local elements = redis.call('ZRANGEBYSCORE', messagesKey, fromSerial, toSerial)
+                local elements = redis.call('ZRANGEBYSCORE', messagesKey, fromPacketId, toPacketId)
                 local messages = {}
                 
                 for _, key in ipairs(elements) do

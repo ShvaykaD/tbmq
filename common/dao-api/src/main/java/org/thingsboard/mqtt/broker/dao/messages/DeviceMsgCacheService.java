@@ -23,9 +23,9 @@ public interface DeviceMsgCacheService {
 
     void save(List<DevicePublishMsg> devicePublishMessages, boolean failOnConflict);
 
-//    List<DevicePublishMsg> findPersistedMessages(String clientId);
+    //    List<DevicePublishMsg> findPersistedMessages(String clientId);
 //
-    List<DevicePublishMsg> findPersistedMessages(String clientId, long fromSerialNumber, long toSerialNumber);
+    List<DevicePublishMsg> findPersistedMessages(String clientId, long fromPacketId, long toPacketId);
 //
 //    void removePersistedMessages(String clientId);
 //

@@ -15,15 +15,17 @@
  */
 package org.thingsboard.mqtt.broker.dao.messages.cache;
 
-import org.springframework.data.redis.serializer.SerializationException;
-import org.springframework.lang.Nullable;
+import java.io.Serial;
+import java.io.Serializable;
 
-public interface TbRedisSerializer<K, V> {
+public record ClientIdLastPacketIdCacheKey(String clientId) implements Serializable {
 
-    @Nullable
-    byte[] serialize(@Nullable V v) throws SerializationException;
+    @Serial
+    private static final long serialVersionUID = 6899529084577281154L;
 
-    @Nullable
-    V deserialize(K key, @Nullable byte[] bytes) throws SerializationException;
+    @Override
+    public String toString() {
+        return "{" + clientId + "}_last_packet_id";
+    }
 
 }
