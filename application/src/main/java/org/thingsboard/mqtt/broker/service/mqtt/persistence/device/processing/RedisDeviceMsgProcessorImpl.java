@@ -18,18 +18,13 @@ package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.thingsboard.mqtt.broker.adaptor.ProtoConverter;
 import org.thingsboard.mqtt.broker.common.data.ClientSessionInfo;
 import org.thingsboard.mqtt.broker.common.data.DevicePublishMsg;
 import org.thingsboard.mqtt.broker.common.util.BrokerConstants;
-import org.thingsboard.mqtt.broker.dao.DbConnectionChecker;
-import org.thingsboard.mqtt.broker.dao.client.device.DevicePacketIdAndSerialNumberService;
-import org.thingsboard.mqtt.broker.dao.client.device.PacketIdAndSerialNumber;
-import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgService;
-import org.thingsboard.mqtt.broker.dto.PacketIdAndSerialNumberDto;
+import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgCacheService;
 import org.thingsboard.mqtt.broker.gen.queue.QueueProtos.PublishMsgProto;
 import org.thingsboard.mqtt.broker.queue.common.TbProtoQueueMsg;
 import org.thingsboard.mqtt.broker.service.analysis.ClientLogger;
@@ -38,41 +33,31 @@ import org.thingsboard.mqtt.broker.service.processing.downlink.DownLinkProxy;
 import org.thingsboard.mqtt.broker.service.stats.DeviceProcessorStats;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@ConditionalOnProperty(prefix = "device.persistence.messages.storage", value = "type", havingValue = "postgres", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "device.persistence.messages.storage", value = "type", havingValue = "redis")
 @RequiredArgsConstructor
-public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
+public class RedisDeviceMsgProcessorImpl implements DeviceMsgProcessor {
 
     private final ClientSessionCache clientSessionCache;
     private final ClientLogger clientLogger;
-    private final DbConnectionChecker dbConnectionChecker;
     private final DownLinkProxy downLinkProxy;
     private final DeviceMsgAcknowledgeStrategyFactory ackStrategyFactory;
-    private final DeviceMsgService deviceMsgService;
-    private final DevicePacketIdAndSerialNumberService serialNumberService;
+    private final DeviceMsgCacheService deviceMsgCacheService;
 
     @Override
     public List<DevicePublishMsg> persistMessages(List<TbProtoQueueMsg<PublishMsgProto>> messages, DeviceProcessorStats stats, String consumerId) {
         Set<String> clientIds = messages.stream().map(TbProtoQueueMsg::getKey).collect(Collectors.toSet());
         for (String clientId : clientIds) {
-            clientLogger.logEvent(clientId, this.getClass(), "Start persisting DEVICE msg");
+            clientLogger.logEvent(clientId, this.getClass(), "[Redis] Start persisting DEVICE msg");
         }
 
         List<DevicePublishMsg> devicePublishMessages = toDevicePublishMsgs(messages);
 
-        Map<String, PacketIdAndSerialNumber> lastPacketIdAndSerialNumbers = null;
-        boolean isDbConnected = dbConnectionChecker.isDbConnected()
-                && (lastPacketIdAndSerialNumbers = tryGetLastPacketIdAndSerialNumber(clientIds)) != null;
-        if (isDbConnected) {
-            persistDeviceMsgs(devicePublishMessages, lastPacketIdAndSerialNumbers, consumerId, stats);
-        }
+        persistDeviceMsgs(devicePublishMessages, consumerId, stats);
 
         for (String clientId : clientIds) {
             clientLogger.logEvent(clientId, this.getClass(), "Finished persisting DEVICE msg");
@@ -114,18 +99,12 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
     }
 
     private void persistDeviceMsgs(List<DevicePublishMsg> devicePublishMessages,
-                                   Map<String, PacketIdAndSerialNumber> lastPacketIdAndSerialNumbers,
                                    String consumerId, DeviceProcessorStats stats) {
-        setPacketIdAndSerialNumber(devicePublishMessages, lastPacketIdAndSerialNumbers);
-
         DeviceAckStrategy ackStrategy = ackStrategyFactory.newInstance(consumerId);
         DevicePackProcessingContext ctx = new DevicePackProcessingContext(devicePublishMessages);
         while (!Thread.interrupted()) {
             try {
-                // TODO: think if we need transaction here
-                // TODO: think about case when client is 'clearing session' at this moment
-                serialNumberService.saveLastSerialNumbers(lastPacketIdAndSerialNumbers);
-                deviceMsgService.save(devicePublishMessages, ctx.detectMsgDuplication());
+                deviceMsgCacheService.save(devicePublishMessages, ctx.detectMsgDuplication());
                 ctx.onSuccess();
             } catch (DuplicateKeyException e) {
                 log.warn("[{}] Duplicate serial number detected, will save with rewrite", consumerId, e);
@@ -142,37 +121,6 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
                 break;
             }
         }
-    }
-
-    private void setPacketIdAndSerialNumber(List<DevicePublishMsg> devicePublishMessages,
-                                            Map<String, PacketIdAndSerialNumber> lastPacketIdAndSerialNumbers) {
-        for (DevicePublishMsg devicePublishMessage : devicePublishMessages) {
-            PacketIdAndSerialNumberDto packetIdAndSerialNumberDto = getAndIncrementPacketIdAndSerialNumber(
-                    lastPacketIdAndSerialNumbers,
-                    devicePublishMessage.getClientId());
-
-            devicePublishMessage.setPacketId(packetIdAndSerialNumberDto.getPacketId());
-            devicePublishMessage.setSerialNumber(packetIdAndSerialNumberDto.getSerialNumber());
-        }
-    }
-
-    private Map<String, PacketIdAndSerialNumber> tryGetLastPacketIdAndSerialNumber(Set<String> clientIds) {
-        try {
-            return serialNumberService.getLastPacketIdAndSerialNumber(clientIds);
-        } catch (DataAccessResourceFailureException e) {
-            log.warn("Cannot get last packetId and serialNumbers since database connection is lost.");
-            return null;
-        }
-    }
-
-    private PacketIdAndSerialNumberDto getAndIncrementPacketIdAndSerialNumber(Map<String, PacketIdAndSerialNumber> lastPacketIdAndSerialNumbers,
-                                                                              String clientId) {
-        PacketIdAndSerialNumber packetIdAndSerialNumber = lastPacketIdAndSerialNumbers.computeIfAbsent(clientId, id ->
-                new PacketIdAndSerialNumber(new AtomicInteger(0), new AtomicLong(-1)));
-        AtomicInteger packetIdAtomic = packetIdAndSerialNumber.getPacketId();
-        packetIdAtomic.incrementAndGet();
-        packetIdAtomic.compareAndSet(0xffff, 1);
-        return new PacketIdAndSerialNumberDto(packetIdAtomic.get(), packetIdAndSerialNumber.getSerialNumber().incrementAndGet());
     }
 
     private List<DevicePublishMsg> toDevicePublishMsgs(List<TbProtoQueueMsg<PublishMsgProto>> msgs) {
