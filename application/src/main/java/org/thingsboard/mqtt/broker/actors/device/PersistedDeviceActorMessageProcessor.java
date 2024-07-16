@@ -113,8 +113,9 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
         this.stopActorCommandUUID = null;
         // TODO: postgres impl. Consider to remove.
 //         List<DevicePublishMsg> persistedMessages = deviceMsgService.findPersistedMessages(clientId);
-        // TODO: replace with correct method that based on limit.
-        List<DevicePublishMsg> persistedMessages = deviceMsgCacheService.findPersistedMessages(clientId, 1, 10);
+        List<DevicePublishMsg> persistedMessages = deviceMsgCacheService.findPersistedMessages(clientId);
+        log.info("persisited messages: {}", persistedMessages);
+        persistedMessages.forEach(devicePublishMsg -> deviceMsgCacheService.removePersistedMessage(clientId, devicePublishMsg.getPacketId()));
         try {
             persistedMessages.forEach(this::deliverPersistedMsg);
         } catch (Exception e) {

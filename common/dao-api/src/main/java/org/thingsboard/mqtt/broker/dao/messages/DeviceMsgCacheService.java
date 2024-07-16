@@ -15,6 +15,7 @@
  */
 package org.thingsboard.mqtt.broker.dao.messages;
 
+import com.google.common.util.concurrent.ListenableFuture;
 import org.thingsboard.mqtt.broker.common.data.DevicePublishMsg;
 
 import java.util.List;
@@ -23,14 +24,14 @@ public interface DeviceMsgCacheService {
 
     void save(List<DevicePublishMsg> devicePublishMessages, boolean failOnConflict);
 
-    //    List<DevicePublishMsg> findPersistedMessages(String clientId);
-//
+    List<DevicePublishMsg> findPersistedMessages(String clientId);
+
     List<DevicePublishMsg> findPersistedMessages(String clientId, long fromPacketId, long toPacketId);
-//
-//    void removePersistedMessages(String clientId);
-//
-//    ListenableFuture<Void> tryRemovePersistedMessage(String clientId, int packetId);
-//
-//    ListenableFuture<Void> tryUpdatePacketReceived(String clientId, int packetId);
+
+    void removePersistedMessages(String clientId);
+
+    void removePersistedMessage(String clientId, int packetId);
+
+    ListenableFuture<Void> tryUpdatePacketReceived(String clientId, int packetId);
 
 }
