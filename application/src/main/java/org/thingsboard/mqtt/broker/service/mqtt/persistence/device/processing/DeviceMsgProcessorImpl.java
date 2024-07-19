@@ -17,7 +17,6 @@ package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -28,15 +27,20 @@ import org.thingsboard.mqtt.broker.common.util.BrokerConstants;
 import org.thingsboard.mqtt.broker.dao.DbConnectionChecker;
 import org.thingsboard.mqtt.broker.dao.client.device.DevicePacketIdAndSerialNumberService;
 import org.thingsboard.mqtt.broker.dao.client.device.PacketIdAndSerialNumber;
+import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgCacheService;
 import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgService;
 import org.thingsboard.mqtt.broker.dto.PacketIdAndSerialNumberDto;
 import org.thingsboard.mqtt.broker.gen.queue.QueueProtos.PublishMsgProto;
 import org.thingsboard.mqtt.broker.queue.common.TbProtoQueueMsg;
 import org.thingsboard.mqtt.broker.service.analysis.ClientLogger;
 import org.thingsboard.mqtt.broker.service.mqtt.client.session.ClientSessionCache;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.ClientIdMessagesPack;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.DefaultClientIdPersistedMsgsCallback;
 import org.thingsboard.mqtt.broker.service.processing.downlink.DownLinkProxy;
 import org.thingsboard.mqtt.broker.service.stats.DeviceProcessorStats;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -46,18 +50,21 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@ConditionalOnProperty(prefix = "device.persistence.messages.storage", value = "type", havingValue = "postgres", matchIfMissing = true)
 @RequiredArgsConstructor
 public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
 
     private final ClientSessionCache clientSessionCache;
     private final ClientLogger clientLogger;
+    // TODO: postgres impl
     private final DbConnectionChecker dbConnectionChecker;
     private final DownLinkProxy downLinkProxy;
     private final DeviceMsgAcknowledgeStrategyFactory ackStrategyFactory;
+    // TODO: postgres impl
     private final DeviceMsgService deviceMsgService;
     private final DevicePacketIdAndSerialNumberService serialNumberService;
+    private final DeviceMsgCacheService deviceMsgCacheService;
 
+    // TODO: postgres impl
     @Override
     public List<DevicePublishMsg> persistMessages(List<TbProtoQueueMsg<PublishMsgProto>> messages, DeviceProcessorStats stats, String consumerId) {
         Set<String> clientIds = messages.stream().map(TbProtoQueueMsg::getKey).collect(Collectors.toSet());
@@ -82,17 +89,27 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
 
     @Override
     public void deliverMessages(List<DevicePublishMsg> devicePublishMessages) {
-        for (DevicePublishMsg devicePublishMsg : devicePublishMessages) {
-            ClientSessionInfo clientSessionInfo = clientSessionCache.getClientSessionInfo(devicePublishMsg.getClientId());
+        var clientIdToMsgList = new HashMap<String, List<DevicePublishMsg>>();
+        for (var devicePublishMessage : devicePublishMessages) {
+            clientIdToMsgList.computeIfAbsent(devicePublishMessage.getClientId(), k -> new ArrayList<>()).add(devicePublishMessage);
+        }
+        for (var entry : clientIdToMsgList.entrySet()) {
+            String clientId = entry.getKey();
+            List<DevicePublishMsg> devicePublishMsgs = entry.getValue();
+            ClientSessionInfo clientSessionInfo = clientSessionCache.getClientSessionInfo(clientId);
             if (clientSessionInfo == null) {
                 if (log.isDebugEnabled()) {
-                    log.debug("[{}] Client session is not found for persisted messages.", devicePublishMsg.getClientId());
+                    log.debug("[{}] Client session is not found for persisted messages.", clientId);
                 }
-            } else if (!clientSessionInfo.isConnected()) {
+                return;
+            }
+            if (!clientSessionInfo.isConnected()) {
                 if (log.isTraceEnabled()) {
-                    log.trace("[{}] Client session is disconnected.", devicePublishMsg.getClientId());
+                    log.trace("[{}] Client session is disconnected.", clientId);
                 }
-            } else {
+                return;
+            }
+            for (var devicePublishMsg : devicePublishMsgs) {
                 String targetServiceId = clientSessionInfo.getServiceId();
                 if (messageWasPersisted(devicePublishMsg)) {
                     downLinkProxy.sendPersistentMsg(
@@ -109,10 +126,59 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
         }
     }
 
+    @Override
+    public void persistAndDeliverClientDeviceMessages(ClientIdMessagesPack pack, DefaultClientIdPersistedMsgsCallback callback) {
+        String clientId = pack.clientId();
+        clientLogger.logEvent(clientId, this.getClass(), "Start persisting DEVICE msg");
+        List<DevicePublishMsg> devicePublishMessages = toDevicePublishMsgs(pack.messages());
+        try {
+            int previousPacketId = Math.toIntExact(deviceMsgCacheService.saveAndReturnFirstPacketId(clientId, devicePublishMessages, false));
+            callback.onSuccess();
+
+            ClientSessionInfo clientSessionInfo = clientSessionCache.getClientSessionInfo(clientId);
+            if (clientSessionInfo == null) {
+                if (log.isDebugEnabled()) {
+                    log.debug("[{}] Client session is not found for persisted messages.", clientId);
+                }
+                return;
+            }
+            if (!clientSessionInfo.isConnected()) {
+                if (log.isTraceEnabled()) {
+                    log.trace("[{}] Client session is disconnected.", clientId);
+                }
+                return;
+            }
+            AtomicInteger packetIdAtomic = new AtomicInteger(previousPacketId);
+            for (var msg : devicePublishMessages) {
+                packetIdAtomic.incrementAndGet();
+                packetIdAtomic.compareAndSet(0xffff, 1);
+                msg.setPacketId(packetIdAtomic.get());
+            }
+            for (var devicePublishMsg : devicePublishMessages) {
+                String targetServiceId = clientSessionInfo.getServiceId();
+                if (messageWasPersisted(devicePublishMsg)) {
+                    downLinkProxy.sendPersistentMsg(
+                            targetServiceId,
+                            devicePublishMsg.getClientId(),
+                            devicePublishMsg);
+                } else {
+                    downLinkProxy.sendBasicMsg(
+                            targetServiceId,
+                            devicePublishMsg.getClientId(),
+                            ProtoConverter.convertToPublishMsgProto(devicePublishMsg));
+                }
+            }
+        } catch (Exception e) {
+            callback.onFailure(e);
+        }
+        clientLogger.logEvent(clientId, this.getClass(), "Finished persisting DEVICE msg");
+    }
+
     private boolean messageWasPersisted(DevicePublishMsg devicePublishMsg) {
         return !devicePublishMsg.getPacketId().equals(BrokerConstants.BLANK_PACKET_ID) && !devicePublishMsg.getSerialNumber().equals(BrokerConstants.BLANK_SERIAL_NUMBER);
     }
 
+    // TODO: postgres impl
     private void persistDeviceMsgs(List<DevicePublishMsg> devicePublishMessages,
                                    Map<String, PacketIdAndSerialNumber> lastPacketIdAndSerialNumbers,
                                    String consumerId, DeviceProcessorStats stats) {
@@ -144,6 +210,7 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
         }
     }
 
+    // TODO: postgres impl
     private void setPacketIdAndSerialNumber(List<DevicePublishMsg> devicePublishMessages,
                                             Map<String, PacketIdAndSerialNumber> lastPacketIdAndSerialNumbers) {
         for (DevicePublishMsg devicePublishMessage : devicePublishMessages) {
@@ -156,6 +223,7 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
         }
     }
 
+    // TODO: postgres impl
     private Map<String, PacketIdAndSerialNumber> tryGetLastPacketIdAndSerialNumber(Set<String> clientIds) {
         try {
             return serialNumberService.getLastPacketIdAndSerialNumber(clientIds);
@@ -165,6 +233,7 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
         }
     }
 
+    // TODO: postgres impl
     private PacketIdAndSerialNumberDto getAndIncrementPacketIdAndSerialNumber(Map<String, PacketIdAndSerialNumber> lastPacketIdAndSerialNumbers,
                                                                               String clientId) {
         PacketIdAndSerialNumber packetIdAndSerialNumber = lastPacketIdAndSerialNumbers.computeIfAbsent(clientId, id ->

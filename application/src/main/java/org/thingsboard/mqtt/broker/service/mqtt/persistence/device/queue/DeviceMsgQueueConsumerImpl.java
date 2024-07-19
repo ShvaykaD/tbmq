@@ -22,19 +22,30 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.thingsboard.mqtt.broker.cluster.ServiceInfoProvider;
-import org.thingsboard.mqtt.broker.common.data.DevicePublishMsg;
 import org.thingsboard.mqtt.broker.common.util.ThingsBoardExecutors;
 import org.thingsboard.mqtt.broker.gen.queue.QueueProtos;
 import org.thingsboard.mqtt.broker.queue.TbQueueConsumer;
 import org.thingsboard.mqtt.broker.queue.common.TbProtoQueueMsg;
 import org.thingsboard.mqtt.broker.queue.provider.DevicePersistenceMsgQueueFactory;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.ClientIdMessagesPack;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.DefaultClientIdPersistedMsgsCallback;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.NewDeviceAckStrategy;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.NewDeviceMsgPersistenceAckStrategyFactory;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.NewDeviceMsgPersistenceSubmitStrategyFactory;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.NewDevicePackProcessingContext;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.NewDevicePackProcessingResult;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.NewDeviceProcessingDecision;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.NewDeviceSubmitStrategy;
 import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DeviceMsgProcessor;
 import org.thingsboard.mqtt.broker.service.stats.DeviceProcessorStats;
 import org.thingsboard.mqtt.broker.service.stats.StatsManager;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -44,6 +55,8 @@ public class DeviceMsgQueueConsumerImpl implements DeviceMsgQueueConsumer {
     private final List<TbQueueConsumer<TbProtoQueueMsg<QueueProtos.PublishMsgProto>>> consumers = new ArrayList<>();
 
     private final DevicePersistenceMsgQueueFactory devicePersistenceMsgQueueFactory;
+    private final NewDeviceMsgPersistenceAckStrategyFactory ackStrategyFactory;
+    private final NewDeviceMsgPersistenceSubmitStrategyFactory submitStrategyFactory;
     private final DeviceMsgProcessor deviceMsgProcessor;
     private final StatsManager statsManager;
     private final ServiceInfoProvider serviceInfoProvider;
@@ -85,15 +98,53 @@ public class DeviceMsgQueueConsumerImpl implements DeviceMsgQueueConsumer {
                         continue;
                     }
 
-                    List<DevicePublishMsg> devicePublishMessages = deviceMsgProcessor.persistMessages(msgs, stats, consumerId);
 
-                    try {
-                        consumer.commitSync();
-                    } catch (Exception e) {
-                        log.warn("[{}] Failed to commit polled messages.", consumerId, e);
+                    NewDeviceAckStrategy ackStrategy = ackStrategyFactory.newInstance(consumerId);
+                    NewDeviceSubmitStrategy submitStrategy = submitStrategyFactory.newInstance(consumerId);
+
+                    var clientIdToMsgsMap = toClientIdMsgsMap(msgs);
+                    submitStrategy.init(clientIdToMsgsMap);
+
+                    long packProcessingStart = System.nanoTime();
+                    while (!stopped) {
+                        var ctx = new NewDevicePackProcessingContext(submitStrategy.getPendingMap());
+                        // TODO: for statistics we probably need to capture total messages count instead of clientId packs
+                        int totalPacksCount = ctx.getPendingMap().size();
+                        submitStrategy.process(clientIdMessagesPack -> {
+                            long clientIdMessagesPackProcessingStart = System.nanoTime();
+                            var callback = new DefaultClientIdPersistedMsgsCallback(clientIdMessagesPack.clientId(), ctx);
+                            deviceMsgProcessor.persistAndDeliverClientDeviceMessages(clientIdMessagesPack, callback);
+                            // TODO: no such method in the DeviceProcessorStats.
+//                            stats.logMsgProcessingTime(System.nanoTime() - msgProcessingStart, TimeUnit.NANOSECONDS);
+                        });
+
+                        if (!stopped) {
+                            // TODO: update yml configuration to define packProcessingTimeout
+                            ctx.await(2000, TimeUnit.MILLISECONDS);
+                        }
+                        var result = new NewDevicePackProcessingResult(ctx);
+                        ctx.cleanup();
+                        NewDeviceProcessingDecision decision = ackStrategy.analyze(result);
+                        // TODO: update with correct parameters
+                        stats.log(totalPacksCount, true, decision.isCommit());
+
+                        if (decision.isCommit()) {
+                            consumer.commitSync();
+                            break;
+                        } else {
+                            submitStrategy.update(decision.getReprocessMap());
+                        }
                     }
+                    // TODO: no such method in the DeviceProcessorStats.
+                    // stats.logPackProcessingTime(msgs.size(), System.nanoTime() - packProcessingStart, TimeUnit.NANOSECONDS);
 
-                    deviceMsgProcessor.deliverMessages(devicePublishMessages);
+//                    try {
+//                        consumer.commitSync();
+//                    } catch (Exception e) {
+//                        log.warn("[{}] Failed to commit polled messages.", consumerId, e);
+//                    }
+                    // TODO: We need to deliver messages that was sucessfully persisted to db.
+                    // deviceMsgProcessor.deliverMessages(devicePublishMessages);
                 } catch (Exception e) {
                     if (!stopped) {
                         log.error("[{}] Failed to process messages from queue.", consumerId, e);
@@ -116,6 +167,17 @@ public class DeviceMsgQueueConsumerImpl implements DeviceMsgQueueConsumer {
         if (consumersExecutor != null) {
             consumersExecutor.shutdownNow();
         }
+    }
+
+    private Map<String, ClientIdMessagesPack> toClientIdMsgsMap(List<TbProtoQueueMsg<QueueProtos.PublishMsgProto>> msgs) {
+        var clientIdMessagesPackMap = new HashMap<String, ClientIdMessagesPack>();
+        for (var msg : msgs) {
+            String clientId = msg.getKey();
+            clientIdMessagesPackMap
+                    .computeIfAbsent(clientId, k -> new ClientIdMessagesPack(clientId, new ArrayList<>()))
+                    .messages().add(msg);
+        }
+        return clientIdMessagesPackMap;
     }
 
 }

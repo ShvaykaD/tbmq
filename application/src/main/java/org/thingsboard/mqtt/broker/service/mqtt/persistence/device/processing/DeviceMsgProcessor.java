@@ -18,6 +18,8 @@ package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 import org.thingsboard.mqtt.broker.common.data.DevicePublishMsg;
 import org.thingsboard.mqtt.broker.gen.queue.QueueProtos;
 import org.thingsboard.mqtt.broker.queue.common.TbProtoQueueMsg;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.ClientIdMessagesPack;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.DefaultClientIdPersistedMsgsCallback;
 import org.thingsboard.mqtt.broker.service.stats.DeviceProcessorStats;
 
 import java.util.List;
@@ -26,4 +28,6 @@ public interface DeviceMsgProcessor {
     List<DevicePublishMsg> persistMessages(List<TbProtoQueueMsg<QueueProtos.PublishMsgProto>> messages, DeviceProcessorStats stats, String consumerId);
 
     void deliverMessages(List<DevicePublishMsg> devicePublishMessages);
+
+    void persistAndDeliverClientDeviceMessages(ClientIdMessagesPack clientIdMessagesPack, DefaultClientIdPersistedMsgsCallback defaultPersistMsgCallback);
 }

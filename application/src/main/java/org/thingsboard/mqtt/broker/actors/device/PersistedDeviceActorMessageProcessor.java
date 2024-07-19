@@ -42,7 +42,6 @@ import org.thingsboard.mqtt.broker.dao.client.device.DevicePacketIdAndSerialNumb
 import org.thingsboard.mqtt.broker.dao.client.device.DeviceSessionCtxService;
 import org.thingsboard.mqtt.broker.dao.client.device.PacketIdAndSerialNumber;
 import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgCacheService;
-import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgService;
 import org.thingsboard.mqtt.broker.dto.PacketIdAndSerialNumberDto;
 import org.thingsboard.mqtt.broker.dto.SharedSubscriptionPublishPacket;
 import org.thingsboard.mqtt.broker.service.analysis.ClientLogger;
@@ -70,7 +69,10 @@ import java.util.concurrent.atomic.AtomicLong;
 class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProcessor {
 
     private final String clientId;
+// TODO: postgres impl
+/*
     private final DeviceMsgService deviceMsgService;
+*/
     private final DeviceMsgCacheService deviceMsgCacheService;
     private final DeviceSessionCtxService deviceSessionCtxService;
     private final DevicePacketIdAndSerialNumberService serialNumberService;
@@ -87,14 +89,16 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
     private volatile ClientSessionCtx sessionCtx;
     @Setter
     private volatile long lastPersistedMsgSentSerialNumber = -1L;
-    @Setter
-    private volatile boolean processedAnyMsg = false;
+// TODO: old impl, previously there was a condition where we may skip a few messages cause client isn't connected yet.
+//  Due to that we have a logic where we tried to fetch missing messages before process next.
+//    @Setter
+//    private volatile boolean processedAnyMsg = false;
     private volatile UUID stopActorCommandUUID;
 
     PersistedDeviceActorMessageProcessor(ActorSystemContext systemContext, String clientId) {
         super(systemContext);
         this.clientId = clientId;
-        this.deviceMsgService = systemContext.getDeviceMsgService();
+//        this.deviceMsgService = systemContext.getDeviceMsgService();
         this.deviceMsgCacheService = systemContext.getDeviceMsgCacheService();
         this.deviceSessionCtxService = systemContext.getDeviceSessionCtxService();
         this.serialNumberService = systemContext.getSerialNumberService();
@@ -111,11 +115,11 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
         }
         this.sessionCtx = msg.getSessionCtx();
         this.stopActorCommandUUID = null;
-        // TODO: postgres impl. Consider to remove.
-//         List<DevicePublishMsg> persistedMessages = deviceMsgService.findPersistedMessages(clientId);
+// TODO: postgres impl.
+/*
+         List<DevicePublishMsg> persistedMessages = deviceMsgService.findPersistedMessages(clientId);
+*/
         List<DevicePublishMsg> persistedMessages = deviceMsgCacheService.findPersistedMessages(clientId);
-        log.info("persisited messages: {}", persistedMessages);
-        persistedMessages.forEach(devicePublishMsg -> deviceMsgCacheService.removePersistedMessage(clientId, devicePublishMsg.getPacketId()));
         try {
             persistedMessages.forEach(this::deliverPersistedMsg);
         } catch (Exception e) {
@@ -124,6 +128,7 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
         }
     }
 
+    // TODO: to talk with Dima about updateMessagesBeforePublish
     public void processingSharedSubscriptions(SharedSubscriptionEventMsg msg) {
         if (log.isTraceEnabled()) {
             log.trace("[{}] Start processing Device shared subscriptions", msg.getSubscriptions());
@@ -145,7 +150,9 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
                 continue;
             }
             String key = topicSharedSubscription.getKey();
-            List<DevicePublishMsg> persistedMessages = deviceMsgService.findPersistedMessages(key);
+            // TODO: postgres impl
+            /*List<DevicePublishMsg> persistedMessages = deviceMsgService.findPersistedMessages(key);*/
+            List<DevicePublishMsg> persistedMessages = deviceMsgCacheService.findPersistedMessages(key);
             if (CollectionUtils.isEmpty(persistedMessages)) {
                 continue;
             }
@@ -181,6 +188,7 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
         return Math.min(topicSharedSubscription.getQos(), devicePublishMessage.getQos());
     }
 
+    // TODO: used by processingSharedSubscriptions.
     private PacketIdAndSerialNumber getLastPacketIdAndSerialNumber() {
         try {
             return serialNumberService.getLastPacketIdAndSerialNumber(Set.of(clientId)).getOrDefault(clientId, newPacketIdAndSerialNumber());
@@ -190,10 +198,12 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
         }
     }
 
+    // TODO: used by processingSharedSubscriptions.
     private PacketIdAndSerialNumber newPacketIdAndSerialNumber() {
         return new PacketIdAndSerialNumber(new AtomicInteger(0), new AtomicLong(-1));
     }
 
+    // TODO: used by processingSharedSubscriptions.
     private PacketIdAndSerialNumberDto getAndIncrementPacketIdAndSerialNumber(PacketIdAndSerialNumber packetIdAndSerialNumber) {
         AtomicInteger packetIdAtomic = packetIdAndSerialNumber.getPacketId();
         packetIdAtomic.incrementAndGet();
@@ -245,7 +255,8 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
         }
 
         checkForMissedMessagesAndProcessBeforeFirstIncomingMsg(publishMsg);
-        processedAnyMsg = true;
+        // TODO: see comment in the place where processedAnyMsg declared!
+        /*processedAnyMsg = true;*/
 
         MsgExpiryResult msgExpiryResult = MqttPropertiesUtil.getMsgExpiryResult(publishMsg, System.currentTimeMillis());
         if (msgExpiryResult.isExpired()) {
@@ -267,25 +278,27 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
     }
 
     void checkForMissedMessagesAndProcessBeforeFirstIncomingMsg(DevicePublishMsg publishMsg) {
-        if (!processedAnyMsg && publishMsg.getSerialNumber() > lastPersistedMsgSentSerialNumber + 1) {
-            long nextPersistedSerialNumber = lastPersistedMsgSentSerialNumber + 1;
+        if (/*!processedAnyMsg && */publishMsg.getSerialNumber() > lastPersistedMsgSentSerialNumber + 1) {
+            log.error("[{}] Message is skipped {}", clientId, publishMsg);
+// TODO: old impl.
+
+/*            long nextPersistedSerialNumber = lastPersistedMsgSentSerialNumber + 1;
             if (log.isDebugEnabled()) {
                 log.debug("[{}] Sending not processed persisted messages, 'from' serial number - {}, 'to' serial number - {}",
                         clientId, nextPersistedSerialNumber, publishMsg.getSerialNumber());
             }
 
-            List<DevicePublishMsg> persistedMessages = findMissedPersistedMessages(publishMsg, nextPersistedSerialNumber);
+            List<DevicePublishMsg> persistedMessages = deviceMsgService
+                    .findPersistedMessages(clientId, nextPersistedSerialNumber, publishMsg.getSerialNumber());
+
             try {
                 persistedMessages.forEach(this::deliverPersistedMsg);
             } catch (Exception e) {
                 log.warn("[{}] Failed to process missed persisted messages", clientId, e);
                 disconnect("Failed to process missed persisted messages");
             }
+*/
         }
-    }
-
-    private List<DevicePublishMsg> findMissedPersistedMessages(DevicePublishMsg publishMsg, long fromSerialNumber) {
-        return deviceMsgService.findPersistedMessages(clientId, fromSerialNumber, publishMsg.getSerialNumber());
     }
 
     private void disconnect(String message) {
@@ -310,22 +323,34 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
     public void processPacketAcknowledge(PacketAcknowledgedEventMsg msg) {
         SharedSubscriptionPublishPacket packet = getSharedSubscriptionPublishPacket(msg.getPacketId());
         var targetClientId = getTargetClientId(packet);
+// TODO: postgres impl
 
-        ListenableFuture<Void> future = deviceMsgService.tryRemovePersistedMessage(targetClientId, getTargetPacketId(packet, msg.getPacketId()));
+/*        ListenableFuture<Void> future = deviceMsgService.tryRemovePersistedMessage(targetClientId, getTargetPacketId(packet, msg.getPacketId()));
         future.addListener(() -> {
             try {
                 inFlightPacketIds.remove(msg.getPacketId());
             } catch (Exception e) {
                 log.warn("[{}] Failed to process packet acknowledge, packetId - {}", targetClientId, msg.getPacketId(), e);
             }
-        }, MoreExecutors.directExecutor());
+        }, MoreExecutors.directExecutor());*/
+
+        try {
+            deviceMsgCacheService.removePersistedMessage(targetClientId, getTargetPacketId(packet, msg.getPacketId()));
+        } catch (Exception ignored) {}
+        // TODO: should we do this only if no exception throwing?
+        try {
+            inFlightPacketIds.remove(msg.getPacketId());
+        } catch (Exception e) {
+            log.warn("[{}] Failed to process packet acknowledge, packetId - {}", targetClientId, msg.getPacketId(), e);
+        }
     }
 
     public void processPacketReceived(PacketReceivedEventMsg msg) {
         SharedSubscriptionPublishPacket packet = getSharedSubscriptionPublishPacket(msg.getPacketId());
         var targetClientId = getTargetClientId(packet);
+// TODO: postgres impl
 
-        ListenableFuture<Void> future = deviceMsgService.tryUpdatePacketReceived(targetClientId, getTargetPacketId(packet, msg.getPacketId()));
+/*        ListenableFuture<Void> future = deviceMsgService.tryUpdatePacketReceived(targetClientId, getTargetPacketId(packet, msg.getPacketId()));
         future.addListener(() -> {
             try {
                 inFlightPacketIds.remove(msg.getPacketId());
@@ -335,22 +360,41 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
             } catch (Exception e) {
                 log.warn("[{}] Failed to process packet received, packetId - {}", targetClientId, msg.getPacketId(), e);
             }
-        }, MoreExecutors.directExecutor());
+        }, MoreExecutors.directExecutor());*/
+        try {
+            deviceMsgCacheService.updatePacketReceived(targetClientId, getTargetPacketId(packet, msg.getPacketId()));
+        } catch (Exception ignored) {}
+        // TODO: should we do this only if no exception throwing?
+        try {
+            inFlightPacketIds.remove(msg.getPacketId());
+            if (sessionCtx != null) {
+                publishMsgDeliveryService.sendPubRelMsgToClient(sessionCtx, msg.getPacketId());
+            }
+        } catch (Exception e) {
+            log.warn("[{}] Failed to process packet received, packetId - {}", targetClientId, msg.getPacketId(), e);
+        }
     }
 
     public void processPacketReceivedNoDelivery(PacketReceivedNoDeliveryEventMsg msg) {
         SharedSubscriptionPublishPacket packet = getSharedSubscriptionPublishPacket(msg.getPacketId());
         var targetClientId = getTargetClientId(packet);
 
-        ListenableFuture<Void> future = deviceMsgService.tryRemovePersistedMessage(targetClientId, getTargetPacketId(packet, msg.getPacketId()));
-        future.addListener(() -> inFlightPacketIds.remove(msg.getPacketId()), MoreExecutors.directExecutor());
+        // TODO: postgres impl
+/*        ListenableFuture<Void> future = deviceMsgService.tryRemovePersistedMessage(targetClientId, getTargetPacketId(packet, msg.getPacketId()));
+        future.addListener(() -> inFlightPacketIds.remove(msg.getPacketId()), MoreExecutors.directExecutor());*/
+
+        try {
+            deviceMsgCacheService.removePersistedMessage(targetClientId, getTargetPacketId(packet, msg.getPacketId()));
+        } catch (Exception ignored) {}
+        inFlightPacketIds.remove(msg.getPacketId());
     }
 
     public void processPacketComplete(PacketCompletedEventMsg msg) {
         SharedSubscriptionPublishPacket packet = getSharedSubscriptionPublishPacket(msg.getPacketId());
         var targetClientId = getTargetClientId(packet);
 
-        ListenableFuture<Void> resultFuture = deviceMsgService.tryRemovePersistedMessage(targetClientId, getTargetPacketId(packet, msg.getPacketId()));
+        // TODO: postgres impl
+/*        ListenableFuture<Void> resultFuture = deviceMsgService.tryRemovePersistedMessage(targetClientId, getTargetPacketId(packet, msg.getPacketId()));
         DonAsynchron.withCallback(
                 resultFuture,
                 unused -> {
@@ -359,7 +403,16 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
                     }
                 },
                 throwable -> log.warn("[{}] Failed to remove persisted msg {} from the DB", targetClientId, msg.getPacketId(), throwable)
-        );
+        );*/
+
+        try {
+            deviceMsgCacheService.removePersistedMessage(targetClientId, getTargetPacketId(packet, msg.getPacketId()));
+            if (log.isDebugEnabled()) {
+                log.debug("[{}] Removed persisted msg {} from the DB", targetClientId, msg.getPacketId());
+            }
+        } catch (Exception e) {
+            log.warn("[{}] Failed to remove persisted msg {} from the DB", targetClientId, msg.getPacketId(), e);
+        }
     }
 
     private String getTargetClientId(SharedSubscriptionPublishPacket packet) {
