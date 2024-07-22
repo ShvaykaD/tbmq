@@ -21,6 +21,7 @@ import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Service;
 import org.thingsboard.mqtt.broker.cache.CacheConstants;
+import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgCacheService;
 import org.thingsboard.mqtt.broker.service.subscription.shared.TopicSharedSubscription;
 import org.thingsboard.mqtt.broker.session.ClientSessionCtx;
 
@@ -34,6 +35,7 @@ public class DevicePersistenceProcessorImpl implements DevicePersistenceProcesso
     // TODO: postgres impl.
     /*private final DeviceMsgService deviceMsgService;
     private final DeviceSessionCtxService deviceSessionCtxService;*/
+    private final DeviceMsgCacheService deviceMsgCacheService;
     private final DeviceActorManager deviceActorManager;
     private final CacheManager cacheManager;
 
@@ -46,6 +48,7 @@ public class DevicePersistenceProcessorImpl implements DevicePersistenceProcesso
 /*        deviceMsgService.removePersistedMessages(clientId);
         deviceSessionCtxService.removeDeviceSessionContext(clientId);
         evictCache(clientId);*/
+        deviceMsgCacheService.removePersistedMessages(clientId);
     }
 
     @Override

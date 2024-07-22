@@ -132,7 +132,7 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
         clientLogger.logEvent(clientId, this.getClass(), "Start persisting DEVICE msg");
         List<DevicePublishMsg> devicePublishMessages = toDevicePublishMsgs(pack.messages());
         try {
-            int previousPacketId = Math.toIntExact(deviceMsgCacheService.saveAndReturnFirstPacketId(clientId, devicePublishMessages, false));
+            int previousPacketId = Math.toIntExact(deviceMsgCacheService.saveAndReturnPreviousPacketId(clientId, devicePublishMessages, false));
             callback.onSuccess();
 
             ClientSessionInfo clientSessionInfo = clientSessionCache.getClientSessionInfo(clientId);
@@ -175,7 +175,9 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
     }
 
     private boolean messageWasPersisted(DevicePublishMsg devicePublishMsg) {
-        return !devicePublishMsg.getPacketId().equals(BrokerConstants.BLANK_PACKET_ID) && !devicePublishMsg.getSerialNumber().equals(BrokerConstants.BLANK_SERIAL_NUMBER);
+        // TODO: old logic where serial number was still used.
+        /*return !devicePublishMsg.getPacketId().equals(BrokerConstants.BLANK_PACKET_ID) && !devicePublishMsg.getSerialNumber().equals(BrokerConstants.BLANK_SERIAL_NUMBER);*/
+        return !devicePublishMsg.getPacketId().equals(BrokerConstants.BLANK_PACKET_ID);
     }
 
     // TODO: postgres impl

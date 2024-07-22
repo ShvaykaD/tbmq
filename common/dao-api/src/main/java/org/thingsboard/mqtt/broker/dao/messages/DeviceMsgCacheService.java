@@ -22,12 +22,9 @@ import java.util.List;
 public interface DeviceMsgCacheService {
 
     // TODO: failOnConflict rebalancing issue. Need to be tested.
-    long saveAndReturnFirstPacketId(String clientId, List<DevicePublishMsg> devicePublishMessages, boolean failOnConflict);
+    long saveAndReturnPreviousPacketId(String clientId, List<DevicePublishMsg> devicePublishMessages, boolean failOnConflict);
 
     List<DevicePublishMsg> findPersistedMessages(String clientId);
-
-    // TODO: remove since it unused.
-    List<DevicePublishMsg> findPersistedMessages(String clientId, int fromPacketId, int toPacketId);
 
     void removePersistedMessages(String clientId);
 

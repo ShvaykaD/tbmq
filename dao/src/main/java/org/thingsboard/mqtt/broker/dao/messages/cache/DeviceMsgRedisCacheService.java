@@ -64,9 +64,8 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
     private final RedisSerializer<String> stringSerializer = StringRedisSerializer.UTF_8;
 
     private final byte[] ADD_MESSAGES_SCRIPT_SHA = stringSerializer.serialize("1ef0ffe33f7a249800590b3b0e930ca904007e9e");
-    private final byte[] GET_MESSAGES_WITH_LIMIT_SHA = stringSerializer.serialize("71f49c1fb159cd634e17f9a46e3d8f0a2fb51c1f");
-    private final byte[] GET_MESSAGES_IN_RANGE_SCRIPT_SHA = stringSerializer.serialize("822b76e789d1c727a9ce80305a5067ee0bfcd7d4");
-    private final byte[] REMOVE_MESSAGES_SCRIPT_SHA = stringSerializer.serialize("f4ef8450272e7f7547c87b52b98a864afafe1290");
+    private final byte[] GET_MESSAGES_SHA = stringSerializer.serialize("71f49c1fb159cd634e17f9a46e3d8f0a2fb51c1f");
+    private final byte[] REMOVE_MESSAGES_SCRIPT_SHA = stringSerializer.serialize("a619f42eb693ea732763d878dd59dff513a295c7");
     private final byte[] REMOVE_MESSAGE_SCRIPT_SHA = stringSerializer.serialize("038e09c6e313eab0d5be4f31361250f4179bc38c");
     private final byte[] UPDATE_PACKET_TYPE_SCRIPT_SHA = stringSerializer.serialize("958139aa4015911c82ddd423ff408b6638805081");
 
@@ -75,11 +74,9 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
         if (messagesLimit > 0xffff) {
             throw new IllegalArgumentException("Persisted messages limit can't be greater than 65535!");
         }
-        // TODO: load lua scripts. Consider if the connection should be the same for all scripts. If so what we should use as a key?
-        try (var connection = getConnection(ADD_MESSAGES_SCRIPT_SHA)) {
+        try (var connection = getNonClusterAwareConnection()) {
             loadAddMessagesScript(connection);
-            loadGetMessagesWithLimitScript(connection);
-            loadGetMessagesInRangeScript(connection);
+            loadGetMessagesScript(connection);
             loadDeleteMessagesScript(connection);
             loadDeleteMessageScript(connection);
             loadUpdatePacketTypeScript(connection);
@@ -90,7 +87,7 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
     }
 
     @Override
-    public long saveAndReturnFirstPacketId(String clientId, List<DevicePublishMsg> devicePublishMessages, boolean failOnConflict) {
+    public long saveAndReturnPreviousPacketId(String clientId, List<DevicePublishMsg> devicePublishMessages, boolean failOnConflict) {
         var messages = new ArrayList<DevicePublishMsgRedisEntity>();
         for (DevicePublishMsg devicePublishMsg : devicePublishMessages) {
             DevicePublishMsgRedisEntity devicePublishMsgRedisEntity = new DevicePublishMsgRedisEntity(devicePublishMsg, defaultTtl);
@@ -122,7 +119,7 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
         try (var connection = getConnection(rawMessagesKey)) {
             try {
                 List<byte[]> messagesBytes = connection.scriptingCommands().evalSha(
-                        Objects.requireNonNull(GET_MESSAGES_WITH_LIMIT_SHA),
+                        Objects.requireNonNull(GET_MESSAGES_SHA),
                         ReturnType.MULTI,
                         1,
                         rawMessagesKey
@@ -139,41 +136,17 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
     }
 
     @Override
-    public List<DevicePublishMsg> findPersistedMessages(String clientId, int fromPacketId, int toPacketId) {
-        byte[] rawMessagesKey = toMessagesCacheKey(clientId);
-        byte[] fromPacketIdBytes = intToBytes(fromPacketId);
-        byte[] toPacketIdBytes = intToBytes(toPacketId);
-        try (var connection = getConnection(rawMessagesKey)) {
-            try {
-                List<byte[]> messagesBytes = connection.scriptingCommands().evalSha(
-                        Objects.requireNonNull(GET_MESSAGES_IN_RANGE_SCRIPT_SHA),
-                        ReturnType.MULTI,
-                        1,
-                        rawMessagesKey,
-                        fromPacketIdBytes,
-                        toPacketIdBytes
-                );
-                return Objects.requireNonNull(messagesBytes)
-                        .stream().map(DeviceMsgRedisCacheService::toData)
-                        .toList();
-            } catch (Exception e) {
-                // TODO throw and exception
-                log.error("[{}][{}][{}] Failed to get device publish messages in range!", clientId, fromPacketId, toPacketId, e);
-                return Collections.emptyList();
-            }
-        }
-    }
-
-    @Override
     public void removePersistedMessages(String clientId) {
         byte[] rawMessagesKey = toMessagesCacheKey(clientId);
+        byte[] rawLastPacketIdKey = toLastPacketIdKey(clientId);
         try (var connection = getConnection(rawMessagesKey)) {
             try {
                 connection.scriptingCommands().evalSha(
                         Objects.requireNonNull(REMOVE_MESSAGES_SCRIPT_SHA),
                         ReturnType.VALUE,
-                        1,
-                        rawMessagesKey
+                        2,
+                        rawMessagesKey,
+                        rawLastPacketIdKey
                 );
             } catch (Exception e) {
                 // TODO throw and exception
@@ -273,6 +246,10 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
         return jedisConnection;
     }
 
+    private RedisConnection getNonClusterAwareConnection() {
+        return connectionFactory.getConnection();
+    }
+
     private void loadAddMessagesScript(RedisConnection connection) {
         String scriptShaStr = new String(Objects.requireNonNull(ADD_MESSAGES_SCRIPT_SHA));
         log.debug("Loading LUA with expected SHA [{}], connection [{}]", scriptShaStr, connection.getNativeConnection());
@@ -319,8 +296,8 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
         validateSha(ADD_MESSAGES_SCRIPT_SHA, scriptShaStr, actualScriptSha, connection);
     }
 
-    private void loadGetMessagesWithLimitScript(RedisConnection connection) {
-        String scriptShaStr = new String(Objects.requireNonNull(GET_MESSAGES_WITH_LIMIT_SHA));
+    private void loadGetMessagesScript(RedisConnection connection) {
+        String scriptShaStr = new String(Objects.requireNonNull(GET_MESSAGES_SHA));
         log.debug("Loading LUA with expected SHA [{}], connection [{}]", scriptShaStr, connection.getNativeConnection());
         byte[] scriptBytes = stringSerializer.serialize("""
                 local messagesKey = KEYS[1]
@@ -341,49 +318,25 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
                 return messages
                 """.formatted(messagesLimit));
         String actualScriptSha = connection.scriptingCommands().scriptLoad(Objects.requireNonNull(scriptBytes));
-        validateSha(GET_MESSAGES_WITH_LIMIT_SHA, scriptShaStr, actualScriptSha, connection);
+        validateSha(GET_MESSAGES_SHA, scriptShaStr, actualScriptSha, connection);
     }
 
-    private void loadGetMessagesInRangeScript(RedisConnection connection) {
-        String scriptShaStr = new String(Objects.requireNonNull(GET_MESSAGES_IN_RANGE_SCRIPT_SHA));
-        log.debug("Loading LUA with expected SHA [{}], connection [{}]", scriptShaStr, connection.getNativeConnection());
-        byte[] scriptBytes = stringSerializer.serialize("""
-                local messagesKey = KEYS[1]
-                local fromPacketId = ARGV[1]
-                local toPacketId = ARGV[2]
-                -- Get the range of elements from the sorted set
-                local elements = redis.call('ZRANGEBYSCORE', messagesKey, fromPacketId, '(' .. toPacketId)
-                local messages = {}
-                for _, key in ipairs(elements) do
-                    -- Check if the key still exists
-                    if redis.call('EXISTS', key) == 1 then
-                        local msgJson = redis.call('GET', key)
-                        table.insert(messages, msgJson)
-                    else
-                        -- If the key does not exist, remove it from the sorted set
-                        redis.call('ZREM', messagesKey, key)
-                    end
-                end
-                return messages
-                """);
-        String actualScriptSha = connection.scriptingCommands().scriptLoad(Objects.requireNonNull(scriptBytes));
-        validateSha(GET_MESSAGES_IN_RANGE_SCRIPT_SHA, scriptShaStr, actualScriptSha, connection);
-    }
-
-    // todo: remove last packet id as well. See DevicePersistenceProcessorImpl.clearPersistedMsgs
     private void loadDeleteMessagesScript(RedisConnection connection) {
         String scriptShaStr = new String(Objects.requireNonNull(REMOVE_MESSAGES_SCRIPT_SHA));
         log.debug("Loading LUA with expected SHA [{}], connection [{}]", scriptShaStr, connection.getNativeConnection());
         byte[] scriptBytes = stringSerializer.serialize("""
                 local messagesKey = KEYS[1]
+                local lastPacketIdKey = KEYS[2]
                 -- Get all elements from the sorted set
                 local elements = redis.call('ZRANGE', messagesKey, 0, -1)
-                -- Delete each associated hash entry
+                -- Delete each associated key entry
                 for _, key in ipairs(elements) do
                     redis.call('DEL', key)
                 end
                 -- Delete the sorted set
                 redis.call('DEL', messagesKey)
+                -- Delete the last packet id key
+                redis.call('DEL', lastPacketIdKey)
                 return nil
                 """);
         String actualScriptSha = connection.scriptingCommands().scriptLoad(Objects.requireNonNull(scriptBytes));
