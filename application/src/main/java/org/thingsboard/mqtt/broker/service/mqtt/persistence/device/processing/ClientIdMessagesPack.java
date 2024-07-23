@@ -15,9 +15,8 @@
  */
 package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 
-import org.thingsboard.mqtt.broker.gen.queue.QueueProtos;
-import org.thingsboard.mqtt.broker.queue.common.TbProtoQueueMsg;
+import org.thingsboard.mqtt.broker.common.data.DevicePublishMsg;
 
 import java.util.List;
 
-public record ClientIdMessagesPack(String clientId, List<TbProtoQueueMsg<QueueProtos.PublishMsgProto>> messages) { }
+public record ClientIdMessagesPack(String clientId, List<DevicePublishMsg> messages) { }

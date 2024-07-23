@@ -96,7 +96,8 @@ public class PersistedDeviceActorMessageProcessorTest {
         deviceActorConfig = mock(DeviceActorConfiguration.class);
         sharedSubscriptionCacheService = mock(SharedSubscriptionCacheService.class);
 
-        when(actorSystemContext.getDeviceMsgService()).thenReturn(deviceMsgService);
+        // TODO: postgres impl.
+//        when(actorSystemContext.getDeviceMsgService()).thenReturn(deviceMsgService);
         when(actorSystemContext.getDeviceSessionCtxService()).thenReturn(deviceSessionCtxService);
         when(actorSystemContext.getSerialNumberService()).thenReturn(serialNumberService);
         when(actorSystemContext.getPublishMsgDeliveryService()).thenReturn(publishMsgDeliveryService);
@@ -280,7 +281,7 @@ public class PersistedDeviceActorMessageProcessorTest {
         verify(publishMsgDeliveryService, times(0)).sendPubRelMsgToClient(any(), anyInt());
 
         assertEquals(1, persistedDeviceActorMessageProcessor.getInFlightPacketIds().size());
-        assertEquals(100L, persistedDeviceActorMessageProcessor.getLastPersistedMsgSentSerialNumber());
+        assertEquals(100L, persistedDeviceActorMessageProcessor.getLastPersistedMsgSentPacketId());
     }
 
     @Test
@@ -346,7 +347,7 @@ public class PersistedDeviceActorMessageProcessorTest {
 
     @Test
     public void givenDevicePublishMsg_whenCheckForMissedMessagesAndProcessBeforeFirstIncomingMsg_thenVerifiedMethodExecution() {
-        persistedDeviceActorMessageProcessor.setLastPersistedMsgSentSerialNumber(5L);
+        persistedDeviceActorMessageProcessor.setLastPersistedMsgSentPacketId(5L);
 
         DevicePublishMsg devicePublishMsg = DevicePublishMsg
                 .builder()
@@ -362,7 +363,7 @@ public class PersistedDeviceActorMessageProcessorTest {
 
     @Test
     public void givenNextDevicePublishMsg_whenCheckForMissedMessagesAndProcessBeforeFirstIncomingMsg_thenVerifiedMethodExecution() {
-        persistedDeviceActorMessageProcessor.setLastPersistedMsgSentSerialNumber(9L);
+        persistedDeviceActorMessageProcessor.setLastPersistedMsgSentPacketId(9L);
 
         DevicePublishMsg devicePublishMsg = DevicePublishMsg
                 .builder()

@@ -17,7 +17,7 @@ package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 
 public interface ClientIdPersistedMsgsCallback {
 
-    void onSuccess();
+    void onSuccess(int previousPacketId);
 
     void onFailure(Throwable t);
 

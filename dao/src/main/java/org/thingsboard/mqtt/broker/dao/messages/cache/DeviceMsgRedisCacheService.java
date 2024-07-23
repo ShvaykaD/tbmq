@@ -163,7 +163,7 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
         try (var connection = getConnection(rawMessagesKey)) {
             try {
                 connection.scriptingCommands().evalSha(
-                        Objects.requireNonNull(REMOVE_MESSAGES_SCRIPT_SHA),
+                        Objects.requireNonNull(REMOVE_MESSAGE_SCRIPT_SHA),
                         ReturnType.VALUE,
                         1,
                         rawMessagesKey,

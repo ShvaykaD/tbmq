@@ -27,5 +27,8 @@ public interface DeviceMsgProcessor {
 
     void deliverMessages(List<DevicePublishMsg> devicePublishMessages);
 
-    void persistAndDeliverClientDeviceMessages(ClientIdMessagesPack clientIdMessagesPack, DefaultClientIdPersistedMsgsCallback defaultPersistMsgCallback);
+    void persistClientDeviceMessages(ClientIdMessagesPack clientIdMessagesPack, DefaultClientIdPersistedMsgsCallback defaultPersistMsgCallback);
+
+    void deliverClientDeviceMessages(String clientId, List<DevicePublishMsg> devicePublishMessages);
+
 }

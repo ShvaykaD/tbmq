@@ -18,7 +18,6 @@ package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessResourceFailureException;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.thingsboard.mqtt.broker.adaptor.ProtoConverter;
 import org.thingsboard.mqtt.broker.common.data.ClientSessionInfo;
@@ -126,51 +125,48 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
     }
 
     @Override
-    public void persistAndDeliverClientDeviceMessages(ClientIdMessagesPack pack, DefaultClientIdPersistedMsgsCallback callback) {
+    public void persistClientDeviceMessages(ClientIdMessagesPack pack, DefaultClientIdPersistedMsgsCallback callback) {
         String clientId = pack.clientId();
+        List<DevicePublishMsg> devicePublishMessages = pack.messages();
         clientLogger.logEvent(clientId, this.getClass(), "Start persisting DEVICE msg");
-        List<DevicePublishMsg> devicePublishMessages = toDevicePublishMsgs(pack.messages());
         try {
             int previousPacketId = Math.toIntExact(deviceMsgCacheService.saveAndReturnPreviousPacketId(clientId, devicePublishMessages, false));
-            callback.onSuccess();
-
-            ClientSessionInfo clientSessionInfo = clientSessionCache.getClientSessionInfo(clientId);
-            if (clientSessionInfo == null) {
-                if (log.isDebugEnabled()) {
-                    log.debug("[{}] Client session is not found for persisted messages.", clientId);
-                }
-                return;
-            }
-            if (!clientSessionInfo.isConnected()) {
-                if (log.isTraceEnabled()) {
-                    log.trace("[{}] Client session is disconnected.", clientId);
-                }
-                return;
-            }
-            AtomicInteger packetIdAtomic = new AtomicInteger(previousPacketId);
-            for (var msg : devicePublishMessages) {
-                packetIdAtomic.incrementAndGet();
-                packetIdAtomic.compareAndSet(0xffff, 1);
-                msg.setPacketId(packetIdAtomic.get());
-            }
-            for (var devicePublishMsg : devicePublishMessages) {
-                String targetServiceId = clientSessionInfo.getServiceId();
-                if (messageWasPersisted(devicePublishMsg)) {
-                    downLinkProxy.sendPersistentMsg(
-                            targetServiceId,
-                            devicePublishMsg.getClientId(),
-                            devicePublishMsg);
-                } else {
-                    downLinkProxy.sendBasicMsg(
-                            targetServiceId,
-                            devicePublishMsg.getClientId(),
-                            ProtoConverter.convertToPublishMsgProto(devicePublishMsg));
-                }
-            }
+            callback.onSuccess(previousPacketId);
         } catch (Exception e) {
             callback.onFailure(e);
         }
         clientLogger.logEvent(clientId, this.getClass(), "Finished persisting DEVICE msg");
+    }
+
+    @Override
+    public void deliverClientDeviceMessages(String clientId, List<DevicePublishMsg> devicePublishMessages) {
+        var clientSessionInfo = clientSessionCache.getClientSessionInfo(clientId);
+        if (clientSessionInfo == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("[{}] Client session is not found for persisted messages.", clientId);
+            }
+            return;
+        }
+        if (!clientSessionInfo.isConnected()) {
+            if (log.isTraceEnabled()) {
+                log.trace("[{}] Client session is disconnected.", clientId);
+            }
+            return;
+        }
+        for (var devicePublishMsg : devicePublishMessages) {
+            String targetServiceId = clientSessionInfo.getServiceId();
+            if (messageWasPersisted(devicePublishMsg)) {
+                downLinkProxy.sendPersistentMsg(
+                        targetServiceId,
+                        devicePublishMsg.getClientId(),
+                        devicePublishMsg);
+            } else {
+                downLinkProxy.sendBasicMsg(
+                        targetServiceId,
+                        devicePublishMsg.getClientId(),
+                        ProtoConverter.convertToPublishMsgProto(devicePublishMsg));
+            }
+        }
     }
 
     private boolean messageWasPersisted(DevicePublishMsg devicePublishMsg) {

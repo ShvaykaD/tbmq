@@ -29,6 +29,7 @@ public class DevicePublishMsg {
 
     private String clientId;
     private String topic;
+    // TODO: remove serialNumber and time?
     private Long serialNumber;
     private Long time; // TODO: use time to check if DEVICE queue is not overloaded (check latency)
     private Integer qos;

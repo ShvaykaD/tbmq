@@ -16,8 +16,10 @@
 package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 
 import lombok.Getter;
+import org.thingsboard.mqtt.broker.common.data.DevicePublishMsg;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Getter
@@ -25,9 +27,11 @@ public class DevicePackProcessingResult {
 
     private final Map<String, ClientIdMessagesPack> pendingMap;
     private final Map<String, ClientIdMessagesPack> failedMap;
+    private final Map<String, List<DevicePublishMsg>> successMap;
 
     public DevicePackProcessingResult(DevicePackProcessingContext ctx) {
         this.pendingMap = new HashMap<>(ctx.getPendingMap());
         this.failedMap = new HashMap<>(ctx.getFailedMap());
+        this.successMap = new HashMap<>(ctx.getSuccessMap());
     }
 }

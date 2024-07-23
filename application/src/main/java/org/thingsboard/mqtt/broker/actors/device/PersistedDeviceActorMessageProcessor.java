@@ -17,8 +17,6 @@ package org.thingsboard.mqtt.broker.actors.device;
 
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.MoreExecutors;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -37,7 +35,6 @@ import org.thingsboard.mqtt.broker.actors.device.messages.StopDeviceActorCommand
 import org.thingsboard.mqtt.broker.actors.shared.AbstractContextAwareMsgProcessor;
 import org.thingsboard.mqtt.broker.common.data.DevicePublishMsg;
 import org.thingsboard.mqtt.broker.common.data.mqtt.MsgExpiryResult;
-import org.thingsboard.mqtt.broker.common.util.DonAsynchron;
 import org.thingsboard.mqtt.broker.dao.client.device.DevicePacketIdAndSerialNumberService;
 import org.thingsboard.mqtt.broker.dao.client.device.DeviceSessionCtxService;
 import org.thingsboard.mqtt.broker.dao.client.device.PacketIdAndSerialNumber;
@@ -87,12 +84,15 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
 
     @Setter
     private volatile ClientSessionCtx sessionCtx;
+    // TODO: postgtes impl. serial number removed in redis impl.
+//    @Setter
+//    private volatile long lastPersistedMsgSentSerialNumber = -1L;
     @Setter
-    private volatile long lastPersistedMsgSentSerialNumber = -1L;
+    private volatile long lastPersistedMsgSentPacketId = 0L;
 // TODO: old impl, previously there was a condition where we may skip a few messages cause client isn't connected yet.
 //  Due to that we have a logic where we tried to fetch missing messages before process next.
-//    @Setter
-//    private volatile boolean processedAnyMsg = false;
+    @Setter
+    private volatile boolean processedAnyMsg = false;
     private volatile UUID stopActorCommandUUID;
 
     PersistedDeviceActorMessageProcessor(ActorSystemContext systemContext, String clientId) {
@@ -223,7 +223,9 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
                 if (!isDup) {
                     inFlightPacketIds.add(persistedMessage.getPacketId());
                 }
-                lastPersistedMsgSentSerialNumber = persistedMessage.getSerialNumber();
+                // TODO: postgtes impl. serial number removed in redis impl.
+//                lastPersistedMsgSentSerialNumber = persistedMessage.getSerialNumber();
+                lastPersistedMsgSentPacketId = persistedMessage.getPacketId();
                 PublishMsg pubMsg = getPublishMsg(persistedMessage, isDup);
                 if (msgExpiryResult.isMsgExpiryIntervalPresent()) {
                     MqttPropertiesUtil.addMsgExpiryIntervalToPublish(pubMsg.getProperties(), msgExpiryResult.getMsgExpiryInterval());
@@ -247,9 +249,11 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
 
     public void process(IncomingPublishMsg msg) {
         DevicePublishMsg publishMsg = msg.getPublishMsg();
-        if (publishMsg.getSerialNumber() <= lastPersistedMsgSentSerialNumber) {
+        // TODO: postgtes impl. serial number removed in redis impl.
+//        if (publishMsg.getSerialNumber() <= lastPersistedMsgSentSerialNumber) {
+        if (publishMsg.getPacketId() <= lastPersistedMsgSentPacketId) {
             if (log.isDebugEnabled()) {
-                log.debug("[{}] Message was already sent to client, ignoring message {}.", clientId, publishMsg.getSerialNumber());
+                log.debug("[{}] Message was already sent to client, ignoring message {}.", clientId, publishMsg.getPacketId());
             }
             return;
         }
@@ -278,7 +282,9 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
     }
 
     void checkForMissedMessagesAndProcessBeforeFirstIncomingMsg(DevicePublishMsg publishMsg) {
-        if (/*!processedAnyMsg && */publishMsg.getSerialNumber() > lastPersistedMsgSentSerialNumber + 1) {
+        // TODO: postgtes impl. serial number removed in redis impl.
+//        if (/*!processedAnyMsg && */publishMsg.getSerialNumber() > lastPersistedMsgSentSerialNumber + 1) {
+        if (/*!processedAnyMsg && */publishMsg.getPacketId() > lastPersistedMsgSentPacketId + 1) {
             log.error("[{}] Message is skipped {}", clientId, publishMsg);
 // TODO: old impl.
 
@@ -336,9 +342,6 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
 
         try {
             deviceMsgCacheService.removePersistedMessage(targetClientId, getTargetPacketId(packet, msg.getPacketId()));
-        } catch (Exception ignored) {}
-        // TODO: should we do this only if no exception throwing?
-        try {
             inFlightPacketIds.remove(msg.getPacketId());
         } catch (Exception e) {
             log.warn("[{}] Failed to process packet acknowledge, packetId - {}", targetClientId, msg.getPacketId(), e);
@@ -363,9 +366,6 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
         }, MoreExecutors.directExecutor());*/
         try {
             deviceMsgCacheService.updatePacketReceived(targetClientId, getTargetPacketId(packet, msg.getPacketId()));
-        } catch (Exception ignored) {}
-        // TODO: should we do this only if no exception throwing?
-        try {
             inFlightPacketIds.remove(msg.getPacketId());
             if (sessionCtx != null) {
                 publishMsgDeliveryService.sendPubRelMsgToClient(sessionCtx, msg.getPacketId());

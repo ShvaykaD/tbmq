@@ -23,6 +23,7 @@ import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.thingsboard.mqtt.broker.cache.CacheConstants;
 import org.thingsboard.mqtt.broker.dao.client.device.DeviceSessionCtxService;
+import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgCacheService;
 import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgService;
 import org.thingsboard.mqtt.broker.session.ClientSessionCtx;
 
@@ -36,7 +37,9 @@ import static org.mockito.Mockito.when;
 @RunWith(MockitoJUnitRunner.class)
 public class DevicePersistenceProcessorImplTest {
 
-    DeviceMsgService deviceMsgService;
+    // TODO: postgres impl.
+//    DeviceMsgService deviceMsgService;
+    DeviceMsgCacheService deviceMsgCacheService;
     DeviceSessionCtxService deviceSessionCtxService;
     DeviceActorManager deviceActorManager;
     CacheManager cacheManager;
@@ -46,27 +49,32 @@ public class DevicePersistenceProcessorImplTest {
 
     @Before
     public void setUp() {
-        deviceMsgService = mock(DeviceMsgService.class);
-        deviceSessionCtxService = mock(DeviceSessionCtxService.class);
+        // TODO: postgres impl.
+//        deviceMsgService = mock(DeviceMsgService.class);
+//        deviceSessionCtxService = mock(DeviceSessionCtxService.class);
+        deviceMsgCacheService = mock(DeviceMsgCacheService.class);
         deviceActorManager = mock(DeviceActorManager.class);
         cacheManager = mock(CacheManager.class);
         devicePersistenceProcessor = spy(new DevicePersistenceProcessorImpl(
-                deviceMsgService, deviceSessionCtxService, deviceActorManager, cacheManager));
+                deviceMsgCacheService, deviceActorManager, cacheManager));
 
         clientId = "clientId";
     }
 
     @Test
     public void clearPersistedMsgsTest() {
-        Cache cache = mock(Cache.class);
-        when(cacheManager.getCache(CacheConstants.PACKET_ID_AND_SERIAL_NUMBER_CACHE)).thenReturn(cache);
+        // TODO: postgres impl.
+//        Cache cache = mock(Cache.class);
+//        when(cacheManager.getCache(CacheConstants.PACKET_ID_AND_SERIAL_NUMBER_CACHE)).thenReturn(cache);
 
         devicePersistenceProcessor.clearPersistedMsgs(clientId);
+        // TODO: postgres impl.
+//        verify(deviceMsgService, times(1)).removePersistedMessages(eq(clientId));
+//        verify(deviceSessionCtxService, times(1)).removeDeviceSessionContext(eq(clientId));
+//        verify(cacheManager, times(1)).getCache(eq(CacheConstants.PACKET_ID_AND_SERIAL_NUMBER_CACHE));
+//        verify(cache, times(1)).evict(eq(clientId));
+        verify(deviceMsgCacheService, times(1)).removePersistedMessages(eq(clientId));
 
-        verify(deviceMsgService, times(1)).removePersistedMessages(eq(clientId));
-        verify(deviceSessionCtxService, times(1)).removeDeviceSessionContext(eq(clientId));
-        verify(cacheManager, times(1)).getCache(eq(CacheConstants.PACKET_ID_AND_SERIAL_NUMBER_CACHE));
-        verify(cache, times(1)).evict(eq(clientId));
     }
 
     @Test

@@ -26,8 +26,8 @@ public class DefaultClientIdPersistedMsgsCallback implements ClientIdPersistedMs
     private final DevicePackProcessingContext ctx;
 
     @Override
-    public void onSuccess() {
-        ctx.onSuccess(clientId);
+    public void onSuccess(int previousPacketId) {
+        ctx.onSuccess(clientId, previousPacketId);
     }
 
     @Override

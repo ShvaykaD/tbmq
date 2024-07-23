@@ -17,11 +17,14 @@ package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.thingsboard.mqtt.broker.common.data.DevicePublishMsg;
 
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 public class DevicePackProcessingContext {
@@ -30,6 +33,8 @@ public class DevicePackProcessingContext {
     private final ConcurrentMap<String, ClientIdMessagesPack> pendingMap;
     @Getter
     private final ConcurrentMap<String, ClientIdMessagesPack> failedMap = new ConcurrentHashMap<>();
+    @Getter
+    private final ConcurrentMap<String, List<DevicePublishMsg>> successMap = new ConcurrentHashMap<>();
 
     private final CountDownLatch processingTimeoutLatch;
 
@@ -42,9 +47,10 @@ public class DevicePackProcessingContext {
         return processingTimeoutLatch.await(packProcessingTimeout, timeUnit);
     }
 
-    public void onSuccess(String clientId) {
+    public void onSuccess(String clientId, int previousPacketId) {
         ClientIdMessagesPack pack = pendingMap.remove(clientId);
         if (pack != null) {
+            successMap.put(clientId, updatePacketIds(previousPacketId, pack));
             processingTimeoutLatch.countDown();
         } else {
             if (log.isDebugEnabled()) {
@@ -67,6 +73,18 @@ public class DevicePackProcessingContext {
 
     public void cleanup() {
         pendingMap.clear();
+        successMap.clear();
+    }
+
+    private List<DevicePublishMsg> updatePacketIds(int previousPacketId, ClientIdMessagesPack pack) {
+        List<DevicePublishMsg> messages = pack.messages();
+        AtomicInteger packetIdAtomic = new AtomicInteger(previousPacketId);
+        for (var msg : messages) {
+            packetIdAtomic.incrementAndGet();
+            packetIdAtomic.compareAndSet(0xffff, 1);
+            msg.setPacketId(packetIdAtomic.get());
+        }
+        return messages;
     }
 
 }
