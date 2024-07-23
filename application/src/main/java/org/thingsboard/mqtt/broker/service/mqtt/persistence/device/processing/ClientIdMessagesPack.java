@@ -13,21 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing;
+package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 
-import lombok.Getter;
+import org.thingsboard.mqtt.broker.gen.queue.QueueProtos;
+import org.thingsboard.mqtt.broker.queue.common.TbProtoQueueMsg;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 
-@Getter
-public class NewDevicePackProcessingResult {
-
-    private final Map<String, ClientIdMessagesPack> pendingMap;
-    private final Map<String, ClientIdMessagesPack> failedMap;
-
-    public NewDevicePackProcessingResult(NewDevicePackProcessingContext ctx) {
-        this.pendingMap = new HashMap<>(ctx.getPendingMap());
-        this.failedMap = new HashMap<>(ctx.getFailedMap());
-    }
-}
+public record ClientIdMessagesPack(String clientId, List<TbProtoQueueMsg<QueueProtos.PublishMsgProto>> messages) { }

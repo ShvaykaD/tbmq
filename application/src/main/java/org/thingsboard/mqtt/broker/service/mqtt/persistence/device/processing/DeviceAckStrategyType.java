@@ -15,7 +15,7 @@
  */
 package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 
-public enum AckStrategyType {
+public enum DeviceAckStrategyType {
     SKIP_ALL,
     RETRY_ALL;
 }

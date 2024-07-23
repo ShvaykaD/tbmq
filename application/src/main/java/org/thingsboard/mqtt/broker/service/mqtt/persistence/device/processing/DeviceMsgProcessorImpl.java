@@ -34,8 +34,6 @@ import org.thingsboard.mqtt.broker.gen.queue.QueueProtos.PublishMsgProto;
 import org.thingsboard.mqtt.broker.queue.common.TbProtoQueueMsg;
 import org.thingsboard.mqtt.broker.service.analysis.ClientLogger;
 import org.thingsboard.mqtt.broker.service.mqtt.client.session.ClientSessionCache;
-import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.ClientIdMessagesPack;
-import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.DefaultClientIdPersistedMsgsCallback;
 import org.thingsboard.mqtt.broker.service.processing.downlink.DownLinkProxy;
 import org.thingsboard.mqtt.broker.service.stats.DeviceProcessorStats;
 
@@ -58,7 +56,8 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
     // TODO: postgres impl
     private final DbConnectionChecker dbConnectionChecker;
     private final DownLinkProxy downLinkProxy;
-    private final DeviceMsgAcknowledgeStrategyFactory ackStrategyFactory;
+    // TODO: postgres impl, class was removed!
+    //    private final DeviceMsgAcknowledgeStrategyFactory ackStrategyFactory;
     // TODO: postgres impl
     private final DeviceMsgService deviceMsgService;
     private final DevicePacketIdAndSerialNumberService serialNumberService;
@@ -184,7 +183,7 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
     private void persistDeviceMsgs(List<DevicePublishMsg> devicePublishMessages,
                                    Map<String, PacketIdAndSerialNumber> lastPacketIdAndSerialNumbers,
                                    String consumerId, DeviceProcessorStats stats) {
-        setPacketIdAndSerialNumber(devicePublishMessages, lastPacketIdAndSerialNumbers);
+        /*setPacketIdAndSerialNumber(devicePublishMessages, lastPacketIdAndSerialNumbers);
 
         DeviceAckStrategy ackStrategy = ackStrategyFactory.newInstance(consumerId);
         DevicePackProcessingContext ctx = new DevicePackProcessingContext(devicePublishMessages);
@@ -209,7 +208,7 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
             if (decision.isCommit()) {
                 break;
             }
-        }
+        }*/
     }
 
     // TODO: postgres impl

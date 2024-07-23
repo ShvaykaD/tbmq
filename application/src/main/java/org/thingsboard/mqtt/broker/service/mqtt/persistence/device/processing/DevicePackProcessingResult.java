@@ -13,19 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing;
+package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 
+import lombok.Getter;
+
+import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentMap;
-import java.util.function.Consumer;
 
-public interface NewDeviceSubmitStrategy {
+@Getter
+public class DevicePackProcessingResult {
 
-    void init(Map<String, ClientIdMessagesPack> clientIdToMessagesMap);
+    private final Map<String, ClientIdMessagesPack> pendingMap;
+    private final Map<String, ClientIdMessagesPack> failedMap;
 
-    ConcurrentMap<String, ClientIdMessagesPack> getPendingMap();
-
-    void process(Consumer<ClientIdMessagesPack> clientIdMessagesPackConsumer);
-
-    void update(Map<String, ClientIdMessagesPack> reprocessMap);
+    public DevicePackProcessingResult(DevicePackProcessingContext ctx) {
+        this.pendingMap = new HashMap<>(ctx.getPendingMap());
+        this.failedMap = new HashMap<>(ctx.getFailedMap());
+    }
 }

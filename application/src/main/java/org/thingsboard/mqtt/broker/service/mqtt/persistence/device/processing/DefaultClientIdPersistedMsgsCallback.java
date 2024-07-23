@@ -13,16 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing;
+package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
-@Component
 @Slf4j
-public class NewDeviceMsgPersistenceSubmitStrategyFactory {
+@RequiredArgsConstructor
+public class DefaultClientIdPersistedMsgsCallback implements ClientIdPersistedMsgsCallback {
 
-    public NewDeviceSubmitStrategy newInstance(String consumerId) {
-        return new NewBurstSubmitStrategy(consumerId);
+    private final String clientId;
+    private final DevicePackProcessingContext ctx;
+
+    @Override
+    public void onSuccess() {
+        ctx.onSuccess(clientId);
+    }
+
+    @Override
+    public void onFailure(Throwable t) {
+        if (log.isTraceEnabled()) {
+            log.trace("[{}] Failed to persist device publish messages due to: ", clientId, t);
+        }
+        ctx.onFailure(clientId);
     }
 }

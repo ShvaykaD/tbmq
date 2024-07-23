@@ -13,11 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing;
+package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 
-import org.thingsboard.mqtt.broker.gen.queue.QueueProtos;
-import org.thingsboard.mqtt.broker.queue.common.TbProtoQueueMsg;
+import java.util.Map;
+import java.util.concurrent.ConcurrentMap;
+import java.util.function.Consumer;
 
-import java.util.List;
+public interface DeviceSubmitStrategy {
 
-public record ClientIdMessagesPack(String clientId, List<TbProtoQueueMsg<QueueProtos.PublishMsgProto>> messages) { }
+    void init(Map<String, ClientIdMessagesPack> clientIdToMessagesMap);
+
+    ConcurrentMap<String, ClientIdMessagesPack> getPendingMap();
+
+    void process(Consumer<ClientIdMessagesPack> clientIdMessagesPackConsumer);
+
+    void update(Map<String, ClientIdMessagesPack> reprocessMap);
+}

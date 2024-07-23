@@ -27,15 +27,15 @@ import org.thingsboard.mqtt.broker.gen.queue.QueueProtos;
 import org.thingsboard.mqtt.broker.queue.TbQueueConsumer;
 import org.thingsboard.mqtt.broker.queue.common.TbProtoQueueMsg;
 import org.thingsboard.mqtt.broker.queue.provider.DevicePersistenceMsgQueueFactory;
-import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.ClientIdMessagesPack;
-import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.DefaultClientIdPersistedMsgsCallback;
-import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.NewDeviceAckStrategy;
-import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.NewDeviceMsgPersistenceAckStrategyFactory;
-import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.NewDeviceMsgPersistenceSubmitStrategyFactory;
-import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.NewDevicePackProcessingContext;
-import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.NewDevicePackProcessingResult;
-import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.NewDeviceProcessingDecision;
-import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing.NewDeviceSubmitStrategy;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.ClientIdMessagesPack;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DefaultClientIdPersistedMsgsCallback;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DeviceAckStrategy;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DeviceMsgPersistenceAckStrategyFactory;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DeviceMsgPersistenceSubmitStrategyFactory;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DevicePackProcessingContext;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DevicePackProcessingResult;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DeviceProcessingDecision;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DeviceSubmitStrategy;
 import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DeviceMsgProcessor;
 import org.thingsboard.mqtt.broker.service.stats.DeviceProcessorStats;
 import org.thingsboard.mqtt.broker.service.stats.StatsManager;
@@ -55,8 +55,8 @@ public class DeviceMsgQueueConsumerImpl implements DeviceMsgQueueConsumer {
     private final List<TbQueueConsumer<TbProtoQueueMsg<QueueProtos.PublishMsgProto>>> consumers = new ArrayList<>();
 
     private final DevicePersistenceMsgQueueFactory devicePersistenceMsgQueueFactory;
-    private final NewDeviceMsgPersistenceAckStrategyFactory ackStrategyFactory;
-    private final NewDeviceMsgPersistenceSubmitStrategyFactory submitStrategyFactory;
+    private final DeviceMsgPersistenceAckStrategyFactory ackStrategyFactory;
+    private final DeviceMsgPersistenceSubmitStrategyFactory submitStrategyFactory;
     private final DeviceMsgProcessor deviceMsgProcessor;
     private final StatsManager statsManager;
     private final ServiceInfoProvider serviceInfoProvider;
@@ -67,6 +67,8 @@ public class DeviceMsgQueueConsumerImpl implements DeviceMsgQueueConsumer {
     private long pollDuration;
     @Value("${queue.device-persisted-msg.threads-count}")
     private int threadsCount;
+    @Value("${queue.device-persisted-msg.pack-processing-timeout}")
+    private long packProcessingTimeout;
 
     private volatile boolean stopped = false;
     private ExecutorService consumersExecutor;
@@ -98,45 +100,41 @@ public class DeviceMsgQueueConsumerImpl implements DeviceMsgQueueConsumer {
                         continue;
                     }
 
-
-                    NewDeviceAckStrategy ackStrategy = ackStrategyFactory.newInstance(consumerId);
-                    NewDeviceSubmitStrategy submitStrategy = submitStrategyFactory.newInstance(consumerId);
+                    DeviceAckStrategy ackStrategy = ackStrategyFactory.newInstance(consumerId);
+                    DeviceSubmitStrategy submitStrategy = submitStrategyFactory.newInstance(consumerId);
 
                     var clientIdToMsgsMap = toClientIdMsgsMap(msgs);
                     submitStrategy.init(clientIdToMsgsMap);
 
                     long packProcessingStart = System.nanoTime();
                     while (!stopped) {
-                        var ctx = new NewDevicePackProcessingContext(submitStrategy.getPendingMap());
-                        // TODO: for statistics we probably need to capture total messages count instead of clientId packs
-                        int totalPacksCount = ctx.getPendingMap().size();
+                        var ctx = new DevicePackProcessingContext(submitStrategy.getPendingMap());
+                        int totalMessagesCount =  ctx.getPendingMap().values().stream()
+                                .mapToInt(pack -> pack.messages().size())
+                                .sum();
                         submitStrategy.process(clientIdMessagesPack -> {
-                            long clientIdMessagesPackProcessingStart = System.nanoTime();
+                            long clientIdPackProcessingStart = System.nanoTime();
                             var callback = new DefaultClientIdPersistedMsgsCallback(clientIdMessagesPack.clientId(), ctx);
                             deviceMsgProcessor.persistAndDeliverClientDeviceMessages(clientIdMessagesPack, callback);
-                            // TODO: no such method in the DeviceProcessorStats.
-//                            stats.logMsgProcessingTime(System.nanoTime() - msgProcessingStart, TimeUnit.NANOSECONDS);
+                            stats.logClientIdPackProcessingTime(System.nanoTime() - clientIdPackProcessingStart, TimeUnit.NANOSECONDS);
                         });
 
                         if (!stopped) {
-                            // TODO: update yml configuration to define packProcessingTimeout
-                            ctx.await(2000, TimeUnit.MILLISECONDS);
+                            ctx.await(packProcessingTimeout, TimeUnit.MILLISECONDS);
                         }
-                        var result = new NewDevicePackProcessingResult(ctx);
+                        var result = new DevicePackProcessingResult(ctx);
                         ctx.cleanup();
-                        NewDeviceProcessingDecision decision = ackStrategy.analyze(result);
-                        // TODO: update with correct parameters
-                        stats.log(totalPacksCount, true, decision.isCommit());
+                        DeviceProcessingDecision decision = ackStrategy.analyze(result);
+                        stats.log(totalMessagesCount, result, decision.commit());
 
-                        if (decision.isCommit()) {
+                        if (decision.commit()) {
                             consumer.commitSync();
                             break;
                         } else {
-                            submitStrategy.update(decision.getReprocessMap());
+                            submitStrategy.update(decision.reprocessMap());
                         }
                     }
-                    // TODO: no such method in the DeviceProcessorStats.
-                    // stats.logPackProcessingTime(msgs.size(), System.nanoTime() - packProcessingStart, TimeUnit.NANOSECONDS);
+                     stats.logClientIdPacksProcessingTime(msgs.size(), System.nanoTime() - packProcessingStart, TimeUnit.NANOSECONDS);
 
 //                    try {
 //                        consumer.commitSync();

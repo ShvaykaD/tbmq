@@ -13,14 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.newprocessing;
+package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 
-import lombok.Data;
+public interface ClientIdPersistedMsgsCallback {
 
-import java.util.Map;
+    void onSuccess();
 
-@Data
-public class NewDeviceProcessingDecision {
-    private final boolean commit;
-    private final Map<String, ClientIdMessagesPack> reprocessMap;
+    void onFailure(Throwable t);
+
 }

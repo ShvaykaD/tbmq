@@ -23,6 +23,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.connection.RedisConnection;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.ReturnType;
 import org.springframework.data.redis.connection.jedis.JedisClusterConnection;
 import org.springframework.data.redis.connection.jedis.JedisConnection;
@@ -46,10 +47,6 @@ import java.util.Objects;
 @Slf4j
 @Service
 @ConditionalOnProperty(prefix = "cache", value = "type", havingValue = "redis")
-@RequiredArgsConstructor
-// TODO: fix this depends on and lazy.
-@DependsOn("redisConnectionFactory")
-@Lazy
 public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
 
     private static final JedisPool MOCK_POOL = new JedisPool(); //non-null pool required for JedisConnection to trigger closing jedis connection
@@ -68,6 +65,10 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
     private final byte[] REMOVE_MESSAGES_SCRIPT_SHA = stringSerializer.serialize("a619f42eb693ea732763d878dd59dff513a295c7");
     private final byte[] REMOVE_MESSAGE_SCRIPT_SHA = stringSerializer.serialize("038e09c6e313eab0d5be4f31361250f4179bc38c");
     private final byte[] UPDATE_PACKET_TYPE_SCRIPT_SHA = stringSerializer.serialize("958139aa4015911c82ddd423ff408b6638805081");
+
+    public DeviceMsgRedisCacheService(RedisConnectionFactory redisConnectionFactory) {
+        this.connectionFactory = (JedisConnectionFactory) redisConnectionFactory;
+    }
 
     @PostConstruct
     public void init() {

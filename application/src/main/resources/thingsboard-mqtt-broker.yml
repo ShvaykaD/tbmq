@@ -249,6 +249,8 @@ queue:
     threads-count: "${TB_DEVICE_PERSISTED_MSG_THREADS_COUNT:2}"
     # Interval in milliseconds to poll messages from 'tbmq.msg.persisted' topic
     poll-interval: "${TB_DEVICE_PERSISTED_MSG_POLL_INTERVAL:100}"
+    # Timeout in milliseconds for processing the pack of messages from 'tbmq.msg.persisted' topic
+    pack-processing-timeout: "${TB_DEVICE_PERSISTED_MSG_PACK_PROCESSING_TIMEOUT:20000}"
     ack-strategy:
       # Queue processing strategy. Can be: SKIP_ALL, RETRY_ALL
       type: "${TB_DEVICE_PERSISTED_MSG_ACK_STRATEGY_TYPE:RETRY_ALL}"
