@@ -32,7 +32,6 @@ import java.util.concurrent.TimeUnit;
 public class DevicePublishMsgRedisEntity implements ToData<DevicePublishMsg> {
 
     private String clientId;
-    private Long serialNumber;
     private String topic;
     private Long time;
     private Integer packetId;
@@ -54,7 +53,6 @@ public class DevicePublishMsgRedisEntity implements ToData<DevicePublishMsg> {
     public DevicePublishMsgRedisEntity(DevicePublishMsg devicePublishMsg, long defaultTtl) {
         this.clientId = devicePublishMsg.getClientId();
         this.topic = devicePublishMsg.getTopic();
-        this.serialNumber = devicePublishMsg.getSerialNumber();
         this.time = devicePublishMsg.getTime();
         this.packetId = devicePublishMsg.getPacketId();
         this.packetType = devicePublishMsg.getPacketType();
@@ -115,7 +113,6 @@ public class DevicePublishMsgRedisEntity implements ToData<DevicePublishMsg> {
         return DevicePublishMsg.builder()
                 .clientId(clientId)
                 .topic(topic)
-                .serialNumber(serialNumber)
                 .time(time)
                 .qos(qos)
                 .payload(payload)
