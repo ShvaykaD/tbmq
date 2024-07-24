@@ -83,7 +83,7 @@ public class DeviceMsgPersistenceAckStrategyFactory {
         public DeviceProcessingDecision analyze(DevicePackProcessingResult result) {
             Map<String, ClientIdMessagesPack> pendingMap = result.getPendingMap();
             Map<String, ClientIdMessagesPack> failedMap = result.getFailedMap();
-            if (pendingMap.isEmpty()) {
+            if (pendingMap.isEmpty() && failedMap.isEmpty()) {
                 return new DeviceProcessingDecision(true, Collections.emptyMap());
             }
             if (maxRetries != 0 && ++retryCount > maxRetries) {

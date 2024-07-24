@@ -25,6 +25,7 @@ import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgCleanUpDao;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+// TODO: postgres impl. remove this service
 public class DeviceMsgCleanUpService {
 
     private final DeviceMsgCleanUpDao cleanUpDao;

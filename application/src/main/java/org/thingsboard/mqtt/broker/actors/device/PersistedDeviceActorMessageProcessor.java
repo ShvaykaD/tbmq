@@ -260,7 +260,7 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
 
         checkForMissedMessagesAndProcessBeforeFirstIncomingMsg(publishMsg);
         // TODO: see comment in the place where processedAnyMsg declared!
-        /*processedAnyMsg = true;*/
+        processedAnyMsg = true;
 
         MsgExpiryResult msgExpiryResult = MqttPropertiesUtil.getMsgExpiryResult(publishMsg, System.currentTimeMillis());
         if (msgExpiryResult.isExpired()) {
@@ -284,7 +284,7 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
     void checkForMissedMessagesAndProcessBeforeFirstIncomingMsg(DevicePublishMsg publishMsg) {
         // TODO: postgtes impl. serial number removed in redis impl.
 //        if (/*!processedAnyMsg && */publishMsg.getSerialNumber() > lastPersistedMsgSentSerialNumber + 1) {
-        if (/*!processedAnyMsg && */publishMsg.getPacketId() > lastPersistedMsgSentPacketId + 1) {
+        if (!processedAnyMsg && publishMsg.getPacketId() > lastPersistedMsgSentPacketId + 1) {
             log.error("[{}] Message is skipped {}", clientId, publishMsg);
 // TODO: old impl.
 
