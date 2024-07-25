@@ -36,6 +36,7 @@ import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.util.JedisClusterCRC16;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -51,17 +52,17 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
 
     private static final RedisSerializer<String> stringSerializer = StringRedisSerializer.UTF_8;
 
-    private static final byte[] ADD_MESSAGES_SCRIPT_SHA = stringSerializer.serialize("1ef0ffe33f7a249800590b3b0e930ca904007e9e");
-    private static final byte[] GET_MESSAGES_SCRIPT_SHA = stringSerializer.serialize("71f49c1fb159cd634e17f9a46e3d8f0a2fb51c1f");
+    private static final byte[] ADD_MESSAGES_SCRIPT_SHA = stringSerializer.serialize("cea4fbc467e6f4749bb3170f45b4853e89956a31");
+    private static final byte[] GET_MESSAGES_SCRIPT_SHA = stringSerializer.serialize("e083e5645a5f268448aca2ec1d3150ee6de510ef");
     private static final byte[] REMOVE_MESSAGES_SCRIPT_SHA = stringSerializer.serialize("a619f42eb693ea732763d878dd59dff513a295c7");
     private static final byte[] REMOVE_MESSAGE_SCRIPT_SHA = stringSerializer.serialize("038e09c6e313eab0d5be4f31361250f4179bc38c");
     private static final byte[] UPDATE_PACKET_TYPE_SCRIPT_SHA = stringSerializer.serialize("958139aa4015911c82ddd423ff408b6638805081");
 
-    private static final String ADD_MESSAGES_SCRIPT_WITHOUT_FORMAT = """
+    private static final byte[] ADD_MESSAGES_SCRIPT = stringSerializer.serialize("""
             local messagesKey = KEYS[1]
             local lastPacketIdKey = KEYS[2]
-            local maxMessagesSize = %d  -- This will be set from the Java
-            local messages = cjson.decode(ARGV[1])
+            local maxMessagesSize = tonumber(ARGV[1])
+            local messages = cjson.decode(ARGV[2])
             -- Fetch the last packetId from the key-value store
             local lastPacketId = tonumber(redis.call('GET', lastPacketIdKey)) or 0
             -- Initialize the score with the last packet ID value
@@ -95,10 +96,10 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
                 end
             end
             return previousPacketId
-            """;
-    public static final String GET_MESSAGES_SCRIPT_WITHOUT_FORMAT = """
+            """);
+    public static final byte[] GET_MESSAGES_SCRIPT = stringSerializer.serialize("""
             local messagesKey = KEYS[1]
-            local maxMessagesSize = %d  -- This will be set from the Java
+            local maxMessagesSize = tonumber(ARGV[1])
             -- Get the range of elements from the sorted set
             local elements = redis.call('ZRANGE', messagesKey, 0, -1)
             local messages = {}
@@ -113,8 +114,7 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
                 end
             end
             return messages
-            """;
-
+            """);
     private static final byte[] REMOVE_MESSAGES_SCRIPT = stringSerializer.serialize("""
             local messagesKey = KEYS[1]
             local lastPacketIdKey = KEYS[2]
@@ -168,8 +168,7 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
     @Value("${mqtt.persistent-session.device.persisted-messages.limit}")
     private int messagesLimit;
 
-    private byte[] addMessagesScript;
-    private byte[] getMessagesScript;
+    private byte[] messagesLimitBytes;
 
     private final JedisConnectionFactory connectionFactory;
 
@@ -182,19 +181,20 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
         if (messagesLimit > 0xffff) {
             throw new IllegalArgumentException("Persisted messages limit can't be greater than 65535!");
         }
+        messagesLimitBytes = intToBytes(messagesLimit);
         try (var connection = getNonClusterAwareConnection()) {
-            loadAddMessagesScript(connection);
-            loadGetMessagesScript(connection);
-            loadDeleteMessagesScript(connection);
-            loadDeleteMessageScript(connection);
-            loadUpdatePacketTypeScript(connection);
+            loadScript(connection, ADD_MESSAGES_SCRIPT_SHA, ADD_MESSAGES_SCRIPT);
+            loadScript(connection, GET_MESSAGES_SCRIPT_SHA, GET_MESSAGES_SCRIPT);
+            loadScript(connection, REMOVE_MESSAGES_SCRIPT_SHA, REMOVE_MESSAGES_SCRIPT);
+            loadScript(connection, REMOVE_MESSAGE_SCRIPT_SHA, REMOVE_MESSAGE_SCRIPT);
+            loadScript(connection, UPDATE_PACKET_TYPE_SCRIPT_SHA, UPDATE_PACKET_TYPE_SCRIPT);
         } catch (Throwable t) {
             throw new RuntimeException("Failed to init persisted device messages cache service!", t);
         }
     }
 
     @Override
-    public long saveAndReturnPreviousPacketId(String clientId, List<DevicePublishMsg> devicePublishMessages, boolean failOnConflict) {
+    public int saveAndReturnPreviousPacketId(String clientId, List<DevicePublishMsg> devicePublishMessages, boolean failOnConflict) {
         if (log.isTraceEnabled()) {
             log.trace("Save persisted messages, clientId - {}, devicePublishMessages size - {}", clientId, devicePublishMessages.size());
         }
@@ -205,26 +205,30 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
         byte[] rawMessagesKey = toMessagesCacheKey(clientId);
         byte[] messagesBytes = JacksonUtil.writeValueAsBytes(messages);
         try (var connection = getConnection(rawMessagesKey)) {
+            Long prevPacketId;
             try {
-                return Objects.requireNonNull(connection.scriptingCommands().evalSha(
+                prevPacketId = connection.scriptingCommands().evalSha(
                         Objects.requireNonNull(ADD_MESSAGES_SCRIPT_SHA),
                         ReturnType.INTEGER,
                         2,
                         rawMessagesKey,
                         rawLastPacketIdKey,
+                        messagesLimitBytes,
                         messagesBytes
-                ));
+                );
             } catch (InvalidDataAccessApiUsageException e) {
                 log.debug("Slowly executing eval instead of fast evalSha [{}] due to exception throwing on sha evaluation: ", connection, e);
-                return Objects.requireNonNull(connection.scriptingCommands().eval(
-                        Objects.requireNonNull(addMessagesScript),
+                prevPacketId = connection.scriptingCommands().eval(
+                        Objects.requireNonNull(ADD_MESSAGES_SCRIPT),
                         ReturnType.INTEGER,
                         2,
                         rawMessagesKey,
                         rawLastPacketIdKey,
+                        messagesLimitBytes,
                         messagesBytes
-                ));
+                );
             }
+            return prevPacketId != null ? prevPacketId.intValue() : 0;
         }
     }
 
@@ -241,19 +245,21 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
                         Objects.requireNonNull(GET_MESSAGES_SCRIPT_SHA),
                         ReturnType.MULTI,
                         1,
-                        rawMessagesKey
+                        rawMessagesKey,
+                        messagesLimitBytes
                 );
             } catch (InvalidDataAccessApiUsageException e) {
                 log.debug("Slowly executing eval instead of fast evalSha [{}] due to exception throwing on sha evaluation: ", connection, e);
                 messagesBytes = connection.scriptingCommands().eval(
-                        Objects.requireNonNull(getMessagesScript),
+                        Objects.requireNonNull(GET_MESSAGES_SCRIPT),
                         ReturnType.MULTI,
                         1,
-                        rawMessagesKey
+                        rawMessagesKey,
+                        messagesLimitBytes
                 );
             }
             return Objects.requireNonNull(messagesBytes)
-                    .stream().map(DeviceMsgRedisCacheService::toData)
+                    .stream().map(DevicePublishMsgRedisEntity::fromBytes)
                     .toList();
         }
     }
@@ -350,8 +356,42 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
         }
     }
 
-    private static DevicePublishMsg toData(byte[] bytes) {
-        return Objects.requireNonNull(JacksonUtil.fromBytes(bytes, DevicePublishMsgRedisEntity.class)).toData();
+    @Override
+    public int getLastPacketId(String clientId) {
+        if (log.isTraceEnabled()) {
+            log.trace("Get last packet id, clientId - {}", clientId);
+        }
+        byte[] rawLastPacketIdKey = toLastPacketIdKey(clientId);
+        try (var connection = getConnection(rawLastPacketIdKey)) {
+            byte[] rawValue = connection.stringCommands().get(rawLastPacketIdKey);
+            if (rawValue == null) {
+                return 0;
+            }
+            return ByteBuffer.wrap(rawValue).getInt();
+        }
+    }
+
+    @Override
+    public void removeLastPacketId(String clientId) {
+        if (log.isTraceEnabled()) {
+            log.trace("Remove last packet id, clientId - {}", clientId);
+        }
+        byte[] rawLastPacketIdKey = toLastPacketIdKey(clientId);
+        try (var connection = getConnection(rawLastPacketIdKey)) {
+            connection.keyCommands().del(rawLastPacketIdKey);
+        }
+    }
+
+    @Override
+    public void saveLastPacketId(String clientId, int lastPacketId) {
+        if (log.isTraceEnabled()) {
+            log.trace("Save last packet id, clientId - {}", clientId);
+        }
+        byte[] rawLastPacketIdKey = toLastPacketIdKey(clientId);
+        byte[] rawLastPacketIdValue = intToBytes(lastPacketId);
+        try (var connection = getConnection(rawLastPacketIdKey)) {
+            connection.stringCommands().set(rawLastPacketIdKey, rawLastPacketIdValue);
+        }
     }
 
     private byte[] toMessagesCacheKey(String clientId) {
@@ -384,8 +424,8 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
         return rawKey;
     }
 
-    private byte[] intToBytes(int fromPacketId) {
-        return stringSerializer.serialize(Integer.toString(fromPacketId));
+    private byte[] intToBytes(int value) {
+        return stringSerializer.serialize(Integer.toString(value));
     }
 
     private RedisConnection getConnection(byte[] rawKey) {
@@ -407,42 +447,11 @@ public class DeviceMsgRedisCacheService implements DeviceMsgCacheService {
         return connectionFactory.getConnection();
     }
 
-    private void loadAddMessagesScript(RedisConnection connection) {
-        String scriptShaStr = new String(Objects.requireNonNull(ADD_MESSAGES_SCRIPT_SHA));
+    private void loadScript(RedisConnection connection, byte[] scriptSha, byte[] script) {
+        String scriptShaStr = new String(Objects.requireNonNull(scriptSha));
         log.debug("Loading LUA with expected SHA [{}], connection [{}]", scriptShaStr, connection.getNativeConnection());
-        addMessagesScript = stringSerializer.serialize(ADD_MESSAGES_SCRIPT_WITHOUT_FORMAT.formatted(messagesLimit));
-        String actualScriptSha = connection.scriptingCommands().scriptLoad(Objects.requireNonNull(addMessagesScript));
-        validateSha(ADD_MESSAGES_SCRIPT_SHA, scriptShaStr, actualScriptSha, connection);
-    }
-
-    private void loadGetMessagesScript(RedisConnection connection) {
-        String scriptShaStr = new String(Objects.requireNonNull(GET_MESSAGES_SCRIPT_SHA));
-        log.debug("Loading LUA with expected SHA [{}], connection [{}]", scriptShaStr, connection.getNativeConnection());
-        getMessagesScript = stringSerializer.serialize(GET_MESSAGES_SCRIPT_WITHOUT_FORMAT.formatted(messagesLimit));
-        String actualScriptSha = connection.scriptingCommands().scriptLoad(Objects.requireNonNull(getMessagesScript));
-        validateSha(GET_MESSAGES_SCRIPT_SHA, scriptShaStr, actualScriptSha, connection);
-    }
-
-    private void loadDeleteMessagesScript(RedisConnection connection) {
-        String scriptShaStr = new String(Objects.requireNonNull(REMOVE_MESSAGES_SCRIPT_SHA));
-        log.debug("Loading lua script with expected SHA [{}] connection [{}]", scriptShaStr, connection.getNativeConnection());
-        String actualScriptSha = connection.scriptingCommands().scriptLoad(Objects.requireNonNull(REMOVE_MESSAGES_SCRIPT));
-        validateSha(REMOVE_MESSAGES_SCRIPT_SHA, scriptShaStr, actualScriptSha, connection);
-    }
-
-    private void loadDeleteMessageScript(RedisConnection connection) {
-        String scriptShaStr = new String(Objects.requireNonNull(REMOVE_MESSAGE_SCRIPT_SHA));
-        log.debug("Loading lua script with expected SHA [{}] connection [{}]", scriptShaStr, connection.getNativeConnection());
-        String actualScriptSha = connection.scriptingCommands().scriptLoad(Objects.requireNonNull(REMOVE_MESSAGE_SCRIPT));
-        validateSha(REMOVE_MESSAGE_SCRIPT_SHA, scriptShaStr, actualScriptSha, connection);
-    }
-
-
-    private void loadUpdatePacketTypeScript(RedisConnection connection) {
-        String scriptShaStr = new String(Objects.requireNonNull(UPDATE_PACKET_TYPE_SCRIPT_SHA));
-        log.debug("Loading lua script with expected SHA [{}] connection [{}]", scriptShaStr, connection.getNativeConnection());
-        String actualScriptSha = connection.scriptingCommands().scriptLoad(Objects.requireNonNull(UPDATE_PACKET_TYPE_SCRIPT));
-        validateSha(UPDATE_PACKET_TYPE_SCRIPT_SHA, scriptShaStr, actualScriptSha, connection);
+        String actualScriptSha = connection.scriptingCommands().scriptLoad(Objects.requireNonNull(script));
+        validateSha(scriptSha, scriptShaStr, actualScriptSha, connection);
     }
 
     private void validateSha(byte[] expectedSha, String expectedShaStr, String actualAddMessagesScriptSha, RedisConnection connection) {

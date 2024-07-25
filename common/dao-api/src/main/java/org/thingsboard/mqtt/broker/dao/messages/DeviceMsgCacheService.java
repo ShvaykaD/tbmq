@@ -21,8 +21,8 @@ import java.util.List;
 
 public interface DeviceMsgCacheService {
 
-    // TODO: failOnConflict rebalancing issue. Need to be tested.
-    long saveAndReturnPreviousPacketId(String clientId, List<DevicePublishMsg> devicePublishMessages, boolean failOnConflict);
+    // TODO: failOnConflict, kafka rebalancing issue. Need to be tested.
+    int saveAndReturnPreviousPacketId(String clientId, List<DevicePublishMsg> devicePublishMessages, boolean failOnConflict);
 
     List<DevicePublishMsg> findPersistedMessages(String clientId);
 
@@ -31,5 +31,11 @@ public interface DeviceMsgCacheService {
     void removePersistedMessage(String clientId, int packetId);
 
     void updatePacketReceived(String clientId, int packetId);
+
+    int getLastPacketId(String clientId);
+
+    void removeLastPacketId(String clientId);
+
+    void saveLastPacketId(String clientId, int lastPacketId);
 
 }

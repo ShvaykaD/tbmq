@@ -25,6 +25,7 @@ import org.thingsboard.mqtt.broker.common.util.BrokerConstants;
 import org.thingsboard.mqtt.broker.common.util.JacksonUtil;
 import org.thingsboard.mqtt.broker.dao.model.ToData;
 
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 @Data
@@ -90,6 +91,10 @@ public class DevicePublishMsgRedisEntity implements ToData<DevicePublishMsg> {
     private byte[] getCorrelationData(DevicePublishMsg devicePublishMsg) {
         MqttProperties.BinaryProperty property = (MqttProperties.BinaryProperty) devicePublishMsg.getProperties().getProperty(BrokerConstants.CORRELATION_DATA_PROP_ID);
         return property == null ? null : property.value();
+    }
+
+    public static DevicePublishMsg fromBytes(byte[] bytes) {
+        return Objects.requireNonNull(JacksonUtil.fromBytes(bytes, DevicePublishMsgRedisEntity.class)).toData();
     }
 
     @Override

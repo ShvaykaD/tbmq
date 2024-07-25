@@ -128,8 +128,48 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
         }
     }
 
-    // TODO: to talk with Dima about updateMessagesBeforePublish
     public void processingSharedSubscriptions(SharedSubscriptionEventMsg msg) {
+        if (log.isTraceEnabled()) {
+            log.trace("[{}] Start processing Device shared subscriptions", msg.getSubscriptions());
+        }
+        if (CollectionUtils.isEmpty(msg.getSubscriptions())) {
+            return;
+        }
+
+        int lastPacketId = deviceMsgCacheService.getLastPacketId(clientId);
+
+        for (TopicSharedSubscription topicSharedSubscription : msg.getSubscriptions()) {
+            boolean anyDeviceClientConnected = sharedSubscriptionCacheService.isAnyOtherDeviceClientConnected(clientId, topicSharedSubscription);
+            if (anyDeviceClientConnected) {
+                continue;
+            }
+            // It means there was at least one persistent offline subscriber and published message with QoS > 0.
+            // If Subscriber QoS is 0 - publish messages QoS is downgraded to 0, so we can not acknowledge such messages from DB.
+            // They can be received by another subscriber with QoS > 0 or will be deleted by TTL.
+            if (topicSharedSubscription.getQos() == 0) {
+                continue;
+            }
+            String key = topicSharedSubscription.getKey();
+            List<DevicePublishMsg> persistedMessages = deviceMsgCacheService.findPersistedMessages(key);
+            if (CollectionUtils.isEmpty(persistedMessages)) {
+                continue;
+            }
+
+            updateMessagesBeforePublish(lastPacketId, topicSharedSubscription, persistedMessages);
+
+            try {
+                persistedMessages.forEach(this::deliverPersistedMsg);
+            } catch (Exception e) {
+                log.warn("[{}][{}] Failed to process shared subscription persisted messages.", clientId, sessionCtx.getSessionId(), e);
+                disconnect("Failed to process shared subscription persisted messages");
+            }
+            deviceMsgCacheService.removeLastPacketId(key);
+        }
+        deviceMsgCacheService.saveLastPacketId(clientId, lastPacketId);
+    }
+
+    // TODO: postgres impl. See Redis impl above.
+    /*public void processingSharedSubscriptions(SharedSubscriptionEventMsg msg) {
         if (log.isTraceEnabled()) {
             log.trace("[{}] Start processing Device shared subscriptions", msg.getSubscriptions());
         }
@@ -150,9 +190,7 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
                 continue;
             }
             String key = topicSharedSubscription.getKey();
-            // TODO: postgres impl
-            /*List<DevicePublishMsg> persistedMessages = deviceMsgService.findPersistedMessages(key);*/
-            List<DevicePublishMsg> persistedMessages = deviceMsgCacheService.findPersistedMessages(key);
+            List<DevicePublishMsg> persistedMessages = deviceMsgService.findPersistedMessages(key);
             if (CollectionUtils.isEmpty(persistedMessages)) {
                 continue;
             }
@@ -168,8 +206,23 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
             deviceSessionCtxService.removeDeviceSessionContext(key);
         }
         serialNumberService.saveLastSerialNumbers(Map.of(clientId, lastPacketIdAndSerialNumber));
+    }*/
+
+    void updateMessagesBeforePublish(int lastPacketId, TopicSharedSubscription topicSharedSubscription,
+                                     List<DevicePublishMsg> persistedMessages) {
+        AtomicInteger packetIdCounter = new AtomicInteger(lastPacketId);
+        for (DevicePublishMsg devicePublishMessage : persistedMessages) {
+            packetIdCounter.incrementAndGet();
+            packetIdCounter.compareAndSet(0xffff, 1);
+            int currentPacketId = packetIdCounter.get();
+            sentPacketIdsFromSharedSubscription.put(currentPacketId,
+                    newSharedSubscriptionPublishPacket(topicSharedSubscription.getKey(), devicePublishMessage.getPacketId()));
+            devicePublishMessage.setPacketId(currentPacketId);
+            devicePublishMessage.setQos(getMinQoSValue(topicSharedSubscription, devicePublishMessage));
+        }
     }
 
+    // TODO: postgres impl. See Redis impl above.
     void updateMessagesBeforePublish(PacketIdAndSerialNumber lastPacketIdAndSerialNumber, TopicSharedSubscription topicSharedSubscription,
                                      List<DevicePublishMsg> persistedMessages) {
         for (DevicePublishMsg devicePublishMessage : persistedMessages) {

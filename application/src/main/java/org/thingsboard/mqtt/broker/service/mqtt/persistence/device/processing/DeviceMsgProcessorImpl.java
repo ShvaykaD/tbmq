@@ -130,8 +130,7 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
         List<DevicePublishMsg> devicePublishMessages = pack.messages();
         clientLogger.logEvent(clientId, this.getClass(), "Start persisting DEVICE msg");
         try {
-            int previousPacketId = Math.toIntExact(deviceMsgCacheService.saveAndReturnPreviousPacketId(clientId, devicePublishMessages, false));
-            callback.onSuccess(previousPacketId);
+            callback.onSuccess(deviceMsgCacheService.saveAndReturnPreviousPacketId(clientId, devicePublishMessages, false));
         } catch (Exception e) {
             callback.onFailure(e);
         }
