@@ -15,8 +15,17 @@
  */
 package org.thingsboard.mqtt.broker.dao.messages;
 
-public interface DeviceMsgCleanUpDao {
-    void cleanUpByTime(long ttl);
+import java.io.Serial;
+import java.io.Serializable;
 
-    void cleanUpBySize(int maxPersistedMessages);
+public record ClientIdLastPacketIdCacheKey(String clientId) implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 6899529084577281154L;
+
+    @Override
+    public String toString() {
+        return "{" + clientId + "}_last_packet_id";
+    }
+
 }

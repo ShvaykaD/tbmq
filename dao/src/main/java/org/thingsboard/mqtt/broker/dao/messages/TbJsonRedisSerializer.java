@@ -13,17 +13,27 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.mqtt.broker.dao.messages.cache;
+package org.thingsboard.mqtt.broker.dao.messages;
 
 import org.springframework.data.redis.serializer.SerializationException;
-import org.springframework.lang.Nullable;
+import org.thingsboard.mqtt.broker.common.util.JacksonUtil;
 
-public interface TbRedisSerializer<K, V> {
+public class TbJsonRedisSerializer<K, V> implements TbRedisSerializer<K, V> {
 
-    @Nullable
-    byte[] serialize(@Nullable V v) throws SerializationException;
+    private final Class<V> clazz;
 
-    @Nullable
-    V deserialize(K key, @Nullable byte[] bytes) throws SerializationException;
+    public TbJsonRedisSerializer(Class<V> clazz) {
+        this.clazz = clazz;
+    }
+
+    @Override
+    public byte[] serialize(V v) throws SerializationException {
+        return JacksonUtil.writeValueAsBytes(v);
+    }
+
+    @Override
+    public V deserialize(K key, byte[] bytes) throws SerializationException {
+        return JacksonUtil.fromBytes(bytes, clazz);
+    }
 
 }

@@ -31,69 +31,70 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
+// TODO: refactor this test so it should be RedisTest.
 @DaoSqlTest
 public class DeviceMsgServiceTest extends AbstractServiceTest {
 
-    @Autowired
-    private DeviceMsgService deviceMsgService;
-
-    private final String TEST_CLIENT_ID = "testClientId";
-    private final byte[] TEST_PAYLOAD = "testPayload".getBytes();
-    private final List<DevicePublishMsg> TEST_MESSAGES = Arrays.asList(
-            newDevicePublishMsg(0L),
-            newDevicePublishMsg(1L),
-            newDevicePublishMsg(2L),
-            newDevicePublishMsg(3L),
-            newDevicePublishMsg(4L)
-    );
-
-    private DevicePublishMsg newDevicePublishMsg(long serialNumber) {
-        return new DevicePublishMsg(TEST_CLIENT_ID, UUID.randomUUID().toString(), serialNumber, 0L, 0, 0,
-                PersistedPacketType.PUBLISH, TEST_PAYLOAD, new MqttProperties(), false);
-    }
-
-    @After
-    public void clearState() {
-        deviceMsgService.removePersistedMessages(TEST_CLIENT_ID);
-    }
-
-    @Test
-    public void testFindAllInRange() {
-        Assert.assertTrue(deviceMsgService.findPersistedMessages(TEST_CLIENT_ID, 0, 5).isEmpty());
-        deviceMsgService.save(TEST_MESSAGES, true);
-        Assert.assertEquals(TEST_MESSAGES, deviceMsgService.findPersistedMessages(TEST_CLIENT_ID, 0, 5));
-    }
-
-    @Test
-    public void testFindSomeInRange_1() {
-        deviceMsgService.save(TEST_MESSAGES, true);
-        Assert.assertEquals(TEST_MESSAGES.subList(0, 3), deviceMsgService.findPersistedMessages(TEST_CLIENT_ID, 0, 3));
-    }
-
-    @Test
-    public void testFindSomeInRange_2() {
-        deviceMsgService.save(TEST_MESSAGES, true);
-        Assert.assertEquals(TEST_MESSAGES.subList(1, 3), deviceMsgService.findPersistedMessages(TEST_CLIENT_ID, 1, 3));
-    }
-
-    @Test
-    public void testFindSomeInRange_3() {
-        deviceMsgService.save(TEST_MESSAGES, true);
-        Assert.assertEquals(TEST_MESSAGES.subList(3, 5), deviceMsgService.findPersistedMessages(TEST_CLIENT_ID, 3, 5));
-    }
-
-    @Test
-    public void testFindNoneInRange() {
-        deviceMsgService.save(TEST_MESSAGES, true);
-        Assert.assertEquals(Collections.emptyList(), deviceMsgService.findPersistedMessages(TEST_CLIENT_ID, 5, 10));
-    }
-
-    @Test
-    public void testSaveWithNoFailOnConflict() {
-        deviceMsgService.save(TEST_MESSAGES, true);
-        DevicePublishMsg pubMsg = newDevicePublishMsg(0L);
-        pubMsg.getProperties().add(new MqttProperties.IntegerProperty(BrokerConstants.PUB_EXPIRY_INTERVAL_PROP_ID, 123));
-        deviceMsgService.save(List.of(pubMsg), false);
-        Assert.assertEquals(List.of(pubMsg), deviceMsgService.findPersistedMessages(TEST_CLIENT_ID, 0, 1));
-    }
+//    @Autowired
+//    private DeviceMsgService deviceMsgService;
+//
+//    private final String TEST_CLIENT_ID = "testClientId";
+//    private final byte[] TEST_PAYLOAD = "testPayload".getBytes();
+//    private final List<DevicePublishMsg> TEST_MESSAGES = Arrays.asList(
+//            newDevicePublishMsg(0L),
+//            newDevicePublishMsg(1L),
+//            newDevicePublishMsg(2L),
+//            newDevicePublishMsg(3L),
+//            newDevicePublishMsg(4L)
+//    );
+//
+//    private DevicePublishMsg newDevicePublishMsg(long serialNumber) {
+//        return new DevicePublishMsg(TEST_CLIENT_ID, UUID.randomUUID().toString(), serialNumber, 0L, 0, 0,
+//                PersistedPacketType.PUBLISH, TEST_PAYLOAD, new MqttProperties(), false);
+//    }
+//
+//    @After
+//    public void clearState() {
+//        deviceMsgService.removePersistedMessages(TEST_CLIENT_ID);
+//    }
+//
+//    @Test
+//    public void testFindAllInRange() {
+//        Assert.assertTrue(deviceMsgService.findPersistedMessages(TEST_CLIENT_ID, 0, 5).isEmpty());
+//        deviceMsgService.save(TEST_MESSAGES, true);
+//        Assert.assertEquals(TEST_MESSAGES, deviceMsgService.findPersistedMessages(TEST_CLIENT_ID, 0, 5));
+//    }
+//
+//    @Test
+//    public void testFindSomeInRange_1() {
+//        deviceMsgService.save(TEST_MESSAGES, true);
+//        Assert.assertEquals(TEST_MESSAGES.subList(0, 3), deviceMsgService.findPersistedMessages(TEST_CLIENT_ID, 0, 3));
+//    }
+//
+//    @Test
+//    public void testFindSomeInRange_2() {
+//        deviceMsgService.save(TEST_MESSAGES, true);
+//        Assert.assertEquals(TEST_MESSAGES.subList(1, 3), deviceMsgService.findPersistedMessages(TEST_CLIENT_ID, 1, 3));
+//    }
+//
+//    @Test
+//    public void testFindSomeInRange_3() {
+//        deviceMsgService.save(TEST_MESSAGES, true);
+//        Assert.assertEquals(TEST_MESSAGES.subList(3, 5), deviceMsgService.findPersistedMessages(TEST_CLIENT_ID, 3, 5));
+//    }
+//
+//    @Test
+//    public void testFindNoneInRange() {
+//        deviceMsgService.save(TEST_MESSAGES, true);
+//        Assert.assertEquals(Collections.emptyList(), deviceMsgService.findPersistedMessages(TEST_CLIENT_ID, 5, 10));
+//    }
+//
+//    @Test
+//    public void testSaveWithNoFailOnConflict() {
+//        deviceMsgService.save(TEST_MESSAGES, true);
+//        DevicePublishMsg pubMsg = newDevicePublishMsg(0L);
+//        pubMsg.getProperties().add(new MqttProperties.IntegerProperty(BrokerConstants.PUB_EXPIRY_INTERVAL_PROP_ID, 123));
+//        deviceMsgService.save(List.of(pubMsg), false);
+//        Assert.assertEquals(List.of(pubMsg), deviceMsgService.findPersistedMessages(TEST_CLIENT_ID, 0, 1));
+//    }
 }

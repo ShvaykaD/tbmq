@@ -1,12 +1,12 @@
 /**
  * Copyright © 2016-2024 The Thingsboard Authors
- *
+ * <p>
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -23,9 +23,7 @@ import org.thingsboard.mqtt.broker.actors.client.ClientActorConfiguration;
 import org.thingsboard.mqtt.broker.actors.device.DeviceActorConfiguration;
 import org.thingsboard.mqtt.broker.actors.msg.TbActorMsg;
 import org.thingsboard.mqtt.broker.actors.service.ActorProcessingMetricService;
-import org.thingsboard.mqtt.broker.dao.client.device.DevicePacketIdAndSerialNumberService;
-import org.thingsboard.mqtt.broker.dao.client.device.DeviceSessionCtxService;
-import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgCacheService;
+import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgService;
 import org.thingsboard.mqtt.broker.service.analysis.ClientLogger;
 import org.thingsboard.mqtt.broker.service.mqtt.PublishMsgDeliveryService;
 import org.thingsboard.mqtt.broker.service.subscription.shared.SharedSubscriptionCacheService;
@@ -40,12 +38,7 @@ import java.util.concurrent.TimeUnit;
 public class ActorSystemContext {
 
     private final TbActorSystem actorSystem;
-    // TODO: postgres impl
-    /*private final DeviceMsgService deviceMsgService;*/
-    private final DeviceMsgCacheService deviceMsgCacheService;
-    private final DeviceSessionCtxService deviceSessionCtxService;
-    // TODO: postgres impl. Consider to remove after checking PersistedDeviceActorMessageProcessor.processingSharedSubscriptions
-    private final DevicePacketIdAndSerialNumberService serialNumberService;
+    private final DeviceMsgService deviceMsgService;
     private final PublishMsgDeliveryService publishMsgDeliveryService;
     private final ClientMqttActorManager clientMqttActorManager;
     private final ActorProcessingMetricService actorProcessingMetricService;

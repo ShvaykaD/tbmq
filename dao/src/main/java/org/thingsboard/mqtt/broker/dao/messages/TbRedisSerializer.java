@@ -13,21 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.mqtt.broker.dao.client.device;
+package org.thingsboard.mqtt.broker.dao.messages;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-import org.thingsboard.mqtt.broker.dao.model.DeviceSessionCtxEntity;
+import org.springframework.data.redis.serializer.SerializationException;
+import org.springframework.lang.Nullable;
 
-import java.util.Collection;
+public interface TbRedisSerializer<K, V> {
 
-@Repository
-public interface DeviceSessionCtxRepository extends JpaRepository<DeviceSessionCtxEntity, String> {
+    @Nullable
+    byte[] serialize(@Nullable V v) throws SerializationException;
 
-    Collection<DeviceSessionCtxEntity> findAllByClientIdIn(Collection<String> clientIds);
-
-    Page<DeviceSessionCtxEntity> findAll(Pageable pageable);
+    @Nullable
+    V deserialize(K key, @Nullable byte[] bytes) throws SerializationException;
 
 }
