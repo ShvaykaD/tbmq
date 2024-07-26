@@ -25,7 +25,6 @@ import org.thingsboard.mqtt.broker.session.ClientSessionCtx;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -50,7 +49,7 @@ public class DevicePersistenceProcessorImplTest {
     @Test
     public void clearPersistedMsgsTest() {
         devicePersistenceProcessor.clearPersistedMsgs(clientId);
-        verify(deviceMsgService, times(1)).removePersistedMessages(eq(clientId));
+        verify(deviceMsgService).removePersistedMessages(eq(clientId));
 
     }
 
@@ -58,21 +57,21 @@ public class DevicePersistenceProcessorImplTest {
     public void processPubAckTest() {
         devicePersistenceProcessor.processPubAck(clientId, 1);
 
-        verify(deviceActorManager, times(1)).notifyPacketAcknowledged(eq(clientId), eq(1));
+        verify(deviceActorManager).notifyPacketAcknowledged(eq(clientId), eq(1));
     }
 
     @Test
     public void processPubRecTest() {
         devicePersistenceProcessor.processPubRec(clientId, 1);
 
-        verify(deviceActorManager, times(1)).notifyPacketReceived(eq(clientId), eq(1));
+        verify(deviceActorManager).notifyPacketReceived(eq(clientId), eq(1));
     }
 
     @Test
     public void processPubCompTest() {
         devicePersistenceProcessor.processPubComp(clientId, 1);
 
-        verify(deviceActorManager, times(1)).notifyPacketCompleted(eq(clientId), eq(1));
+        verify(deviceActorManager).notifyPacketCompleted(eq(clientId), eq(1));
     }
 
     @Test
@@ -81,13 +80,13 @@ public class DevicePersistenceProcessorImplTest {
 
         devicePersistenceProcessor.startProcessingPersistedMessages(clientSessionCtx);
 
-        verify(deviceActorManager, times(1)).notifyClientConnected(eq(clientSessionCtx));
+        verify(deviceActorManager).notifyClientConnected(eq(clientSessionCtx));
     }
 
     @Test
     public void stopProcessingPersistedMessagesTest() {
         devicePersistenceProcessor.stopProcessingPersistedMessages(clientId);
 
-        verify(deviceActorManager, times(1)).notifyClientDisconnected(eq(clientId));
+        verify(deviceActorManager).notifyClientDisconnected(eq(clientId));
     }
 }
