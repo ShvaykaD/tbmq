@@ -32,7 +32,7 @@ import org.thingsboard.mqtt.broker.queue.provider.DevicePersistenceMsgQueueFacto
 import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.ClientIdMessagesPack;
 import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DefaultClientIdPersistedMsgsCallback;
 import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DeviceAckStrategy;
-import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DeviceMsgPersistenceAckStrategyFactory;
+import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DeviceMsgAcknowledgeStrategyFactory;
 import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DeviceMsgPersistenceSubmitStrategyFactory;
 import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DeviceMsgProcessor;
 import org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing.DevicePackProcessingContext;
@@ -57,7 +57,7 @@ public class DeviceMsgQueueConsumerImpl implements DeviceMsgQueueConsumer {
     private final List<TbQueueConsumer<TbProtoQueueMsg<QueueProtos.PublishMsgProto>>> consumers = new ArrayList<>();
 
     private final DevicePersistenceMsgQueueFactory devicePersistenceMsgQueueFactory;
-    private final DeviceMsgPersistenceAckStrategyFactory ackStrategyFactory;
+    private final DeviceMsgAcknowledgeStrategyFactory ackStrategyFactory;
     private final DeviceMsgPersistenceSubmitStrategyFactory submitStrategyFactory;
     private final DeviceMsgProcessor deviceMsgProcessor;
     private final StatsManager statsManager;
@@ -145,13 +145,6 @@ public class DeviceMsgQueueConsumerImpl implements DeviceMsgQueueConsumer {
                     stats.logClientIdPacksProcessingTime(msgs.size(), System.nanoTime() - packProcessingStart, TimeUnit.NANOSECONDS);
 
                     deliveryMap.forEach(deviceMsgProcessor::deliverClientDeviceMessages);
-
-//                    try {
-//                        consumer.commitSync();
-//                    } catch (Exception e) {
-//                        log.warn("[{}] Failed to commit polled messages.", consumerId, e);
-//                    }
-//                    deviceMsgProcessor.deliverMessages(devicePublishMessages);
                 } catch (Exception e) {
                     if (!stopped) {
                         log.error("[{}] Failed to process messages from queue.", consumerId, e);

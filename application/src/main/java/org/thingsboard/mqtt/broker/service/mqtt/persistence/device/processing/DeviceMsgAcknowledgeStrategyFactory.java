@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class DeviceMsgPersistenceAckStrategyFactory {
+public class DeviceMsgAcknowledgeStrategyFactory {
 
     private final DeviceAckStrategyConfiguration ackStrategyConfiguration;
 

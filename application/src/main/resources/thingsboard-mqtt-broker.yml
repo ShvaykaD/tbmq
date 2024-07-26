@@ -775,11 +775,6 @@ cache:
     # Cache stats logging interval in seconds
     intervalSec: "${CACHE_STATS_INTERVAL_SEC:60}"
   specs:
-    packetIdAndSerialNumber:
-      # Cache TTL in minutes
-      timeToLiveInMinutes: "${CACHE_SPECS_PACKET_ID_SERIAL_NUMBER_TTL:1440}"
-      # Cache max size. 0 means the cache is disabled in case CACHE_TYPE=caffeine
-      maxSize: "${CACHE_SPECS_PACKET_ID_SERIAL_NUMBER_MAX_SIZE:10000}"
     mqttClientCredentials:
       # Cache TTL in minutes
       timeToLiveInMinutes: "${CACHE_SPECS_MQTT_CLIENT_CREDENTIALS_TTL:1440}"

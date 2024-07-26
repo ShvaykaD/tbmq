@@ -54,6 +54,7 @@ public class DevicePublishMsgEntity implements ToData<DevicePublishMsg> {
     public DevicePublishMsgEntity(DevicePublishMsg devicePublishMsg, long defaultTtl) {
         this.clientId = devicePublishMsg.getClientId();
         this.topic = devicePublishMsg.getTopic();
+        this.time = devicePublishMsg.getTime();
         this.packetId = devicePublishMsg.getPacketId();
         this.packetType = devicePublishMsg.getPacketType();
         this.qos = devicePublishMsg.getQos();
@@ -117,6 +118,7 @@ public class DevicePublishMsgEntity implements ToData<DevicePublishMsg> {
         return DevicePublishMsg.builder()
                 .clientId(clientId)
                 .topic(topic)
+                .time(time)
                 .qos(qos)
                 .payload(payload)
                 .packetId(packetId)

@@ -121,8 +121,6 @@ public class BrokerConstants {
     );
 
     public static final int BLANK_PACKET_ID = -1;
-    // TODO: postgtes impl. serial number removed in redis impl.
-    public static final long BLANK_SERIAL_NUMBER = -1L;
 
     public static final String PUB_SUB_AUTH_RULES_ALLOW_ALL = ".*";
     public static final String WS_SYSTEM_MQTT_CLIENT_CREDENTIALS_NAME = "TBMQ WebSockets MQTT Credentials";
