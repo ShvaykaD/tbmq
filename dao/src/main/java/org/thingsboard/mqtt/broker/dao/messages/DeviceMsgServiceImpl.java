@@ -366,7 +366,7 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             if (rawValue == null) {
                 return 0;
             }
-            return ByteBuffer.wrap(rawValue).getInt();
+            return Integer.parseInt(Objects.requireNonNull(stringSerializer.deserialize(rawValue)));
         }
     }
 
