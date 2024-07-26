@@ -121,12 +121,12 @@ public class DefaultDeviceProcessorStats implements DeviceProcessorStats {
     }
 
     @Override
-    public double getAvgClientIdPackProcessingTime() {
+    public double getAvgClientIdMsgPackProcessingTime() {
         return clientIdPackProcessingTimer.getAvg();
     }
 
     @Override
-    public double getAvgClientIdPacksProcessingTime() {
+    public double getAvgPackProcessingTime() {
         return packProcessingTimer.getAvg();
     }
 

@@ -113,9 +113,12 @@ public class DeviceMsgQueueConsumerImpl implements DeviceMsgQueueConsumer {
                     long packProcessingStart = System.nanoTime();
                     while (!stopped) {
                         var ctx = new DevicePackProcessingContext(submitStrategy.getPendingMap());
-                        int totalMessagesCount = ctx.getPendingMap().values().stream()
-                                .mapToInt(pack -> pack.messages().size())
-                                .sum();
+                        int totalMessagesCount = 0;
+                        if (statsManager.isEnabled()) {
+                            totalMessagesCount = ctx.getPendingMap().values().stream()
+                                    .mapToInt(pack -> pack.messages().size())
+                                    .sum();
+                        }
                         submitStrategy.process(clientIdMessagesPack -> {
                             long clientIdPackProcessingStart = System.nanoTime();
                             var callback = new DefaultClientIdPersistedMsgsCallback(clientIdMessagesPack.clientId(), ctx);

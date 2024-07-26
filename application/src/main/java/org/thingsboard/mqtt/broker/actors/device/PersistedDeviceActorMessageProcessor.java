@@ -338,6 +338,7 @@ class PersistedDeviceActorMessageProcessor extends AbstractContextAwareMsgProces
         // TODO: postgtes impl. serial number removed in redis impl.
 //        if (/*!processedAnyMsg && */publishMsg.getSerialNumber() > lastPersistedMsgSentSerialNumber + 1) {
         if (!processedAnyMsg && publishMsg.getPacketId() > lastPersistedMsgSentPacketId + 1) {
+            // TODO: back to debug.
             log.error("[{}] Message is skipped {}", clientId, publishMsg);
 // TODO: old impl.
 

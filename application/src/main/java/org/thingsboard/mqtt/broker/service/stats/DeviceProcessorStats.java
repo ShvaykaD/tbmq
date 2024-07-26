@@ -32,9 +32,9 @@ public interface DeviceProcessorStats {
 
     List<StatsCounter> getStatsCounters();
 
-    double getAvgClientIdPackProcessingTime();
+    double getAvgClientIdMsgPackProcessingTime();
 
-    double getAvgClientIdPacksProcessingTime();
+    double getAvgPackProcessingTime();
 
     double getAvgPackSize();
 

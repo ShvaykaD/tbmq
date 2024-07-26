@@ -50,12 +50,12 @@ public class StubDeviceProcessorStats implements DeviceProcessorStats {
     }
 
     @Override
-    public double getAvgClientIdPackProcessingTime() {
+    public double getAvgClientIdMsgPackProcessingTime() {
         return 0;
     }
 
     @Override
-    public double getAvgClientIdPacksProcessingTime() {
+    public double getAvgPackProcessingTime() {
         return 0;
     }
 
