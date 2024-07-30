@@ -162,7 +162,7 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             """);
 
     @Value("${mqtt.persistent-session.device.persisted-messages.ttl}")
-    private long defaultTtl;
+    private int defaultTtl;
 
     @Value("${mqtt.persistent-session.device.persisted-messages.limit}")
     private int messagesLimit;

@@ -51,7 +51,7 @@ public class DevicePublishMsgEntity implements ToData<DevicePublishMsg> {
 
     }
 
-    public DevicePublishMsgEntity(DevicePublishMsg devicePublishMsg, long defaultTtl) {
+    public DevicePublishMsgEntity(DevicePublishMsg devicePublishMsg, int defaultTtl) {
         this.clientId = devicePublishMsg.getClientId();
         this.topic = devicePublishMsg.getTopic();
         this.time = devicePublishMsg.getTime();
@@ -68,9 +68,9 @@ public class DevicePublishMsgEntity implements ToData<DevicePublishMsg> {
         this.correlationData = getCorrelationData(devicePublishMsg);
     }
 
-    private Integer getMsgExpiryInterval(DevicePublishMsg devicePublishMsg, long defaultTtl) {
+    private Integer getMsgExpiryInterval(DevicePublishMsg devicePublishMsg, int defaultTtl) {
         MqttProperties.IntegerProperty property = (MqttProperties.IntegerProperty) devicePublishMsg.getProperties().getProperty(BrokerConstants.PUB_EXPIRY_INTERVAL_PROP_ID);
-        return property == null ? Math.toIntExact(TimeUnit.MILLISECONDS.toSeconds(defaultTtl)) : property.value();
+        return property == null ? defaultTtl : property.value();
     }
 
     private Integer getPayloadFormatIndicator(DevicePublishMsg devicePublishMsg) {
