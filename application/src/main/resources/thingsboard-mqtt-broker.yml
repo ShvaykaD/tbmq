@@ -760,11 +760,6 @@ mqtt:
   # Set it to topic to be used for request-response feature, e.g. "example/"
   response-info: "${MQTT_RESPONSE_INFO:}"
 
-# DB connectivity parameters
-db:
-  # The parameter to specify time interval in milliseconds to periodically check if the connection to the DB is still established
-  connection-check-rate-ms: "${DB_CONNECTION_CHECK_RATE_MS:10000}"
-
 # Cache parameters
 cache:
   # Cache type: caffeine or redis
