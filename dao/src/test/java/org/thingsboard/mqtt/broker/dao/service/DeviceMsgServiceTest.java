@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.mqtt.broker.dao.redis;
+package org.thingsboard.mqtt.broker.dao.service;
 
 import io.netty.handler.codec.mqtt.MqttProperties;
 import org.junit.After;
@@ -24,7 +24,6 @@ import org.thingsboard.mqtt.broker.common.data.PersistedPacketType;
 import org.thingsboard.mqtt.broker.common.util.BrokerConstants;
 import org.thingsboard.mqtt.broker.dao.DaoSqlTest;
 import org.thingsboard.mqtt.broker.dao.messages.DeviceMsgService;
-import org.thingsboard.mqtt.broker.dao.service.AbstractServiceTest;
 
 import java.util.List;
 import java.util.UUID;

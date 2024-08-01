@@ -29,6 +29,6 @@ import org.junit.runner.RunWith;
         "org.thingsboard.mqtt.broker.dao.validation.*Test",
         "org.thingsboard.mqtt.broker.dao.ws.*Test"
 })
-public class DaoServiceTestSuite {
+public class DaoServiceTestSuite extends AbstractRedisContainer {
 
 }

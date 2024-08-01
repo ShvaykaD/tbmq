@@ -18,7 +18,6 @@ package org.thingsboard.mqtt.broker.dao.messages;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -35,7 +34,6 @@ import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.util.JedisClusterCRC16;
 
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -44,7 +42,6 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@ConditionalOnProperty(prefix = "cache", value = "type", havingValue = "redis")
 public class DeviceMsgServiceImpl implements DeviceMsgService {
 
     private static final JedisPool MOCK_POOL = new JedisPool(); //non-null pool required for JedisConnection to trigger closing jedis connection

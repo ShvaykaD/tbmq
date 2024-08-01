@@ -30,23 +30,22 @@ public class AbstractRedisClusterContainer {
 
     static final String nodes = "127.0.0.1:6371,127.0.0.1:6372,127.0.0.1:6373,127.0.0.1:6374,127.0.0.1:6375,127.0.0.1:6376";
 
-    @ClassRule(order = 0)
+    @ClassRule
     public static Network network = Network.newNetwork();
-    @ClassRule(order = 1)
+    @ClassRule
     public static GenericContainer redis1 = new GenericContainer("bitnami/redis-cluster:latest").withEnv("REDIS_PORT_NUMBER", "6371").withNetworkMode("host").withLogConsumer(x -> log.warn("{}", ((OutputFrame) x).getUtf8StringWithoutLineEnding())).withEnv("ALLOW_EMPTY_PASSWORD", "yes").withEnv("REDIS_NODES", nodes);
-    @ClassRule(order = 2)
+    @ClassRule
     public static GenericContainer redis2 = new GenericContainer("bitnami/redis-cluster:latest").withEnv("REDIS_PORT_NUMBER", "6372").withNetworkMode("host").withLogConsumer(x -> log.warn("{}", ((OutputFrame) x).getUtf8StringWithoutLineEnding())).withEnv("ALLOW_EMPTY_PASSWORD", "yes").withEnv("REDIS_NODES", nodes);
-    @ClassRule(order = 3)
+    @ClassRule
     public static GenericContainer redis3 = new GenericContainer("bitnami/redis-cluster:latest").withEnv("REDIS_PORT_NUMBER", "6373").withNetworkMode("host").withLogConsumer(x -> log.warn("{}", ((OutputFrame) x).getUtf8StringWithoutLineEnding())).withEnv("ALLOW_EMPTY_PASSWORD", "yes").withEnv("REDIS_NODES", nodes);
-    @ClassRule(order = 4)
+    @ClassRule
     public static GenericContainer redis4 = new GenericContainer("bitnami/redis-cluster:latest").withEnv("REDIS_PORT_NUMBER", "6374").withNetworkMode("host").withLogConsumer(x -> log.warn("{}", ((OutputFrame) x).getUtf8StringWithoutLineEnding())).withEnv("ALLOW_EMPTY_PASSWORD", "yes").withEnv("REDIS_NODES", nodes);
-    @ClassRule(order = 5)
+    @ClassRule
     public static GenericContainer redis5 = new GenericContainer("bitnami/redis-cluster:latest").withEnv("REDIS_PORT_NUMBER", "6375").withNetworkMode("host").withLogConsumer(x -> log.warn("{}", ((OutputFrame) x).getUtf8StringWithoutLineEnding())).withEnv("ALLOW_EMPTY_PASSWORD", "yes").withEnv("REDIS_NODES", nodes);
-    @ClassRule(order = 6)
+    @ClassRule
     public static GenericContainer redis6 = new GenericContainer("bitnami/redis-cluster:latest").withEnv("REDIS_PORT_NUMBER", "6376").withNetworkMode("host").withLogConsumer(x -> log.warn("{}", ((OutputFrame) x).getUtf8StringWithoutLineEnding())).withEnv("ALLOW_EMPTY_PASSWORD", "yes").withEnv("REDIS_NODES", nodes);
 
-
-    @ClassRule(order = 100)
+    @ClassRule
     public static ExternalResource resource = new ExternalResource() {
         @Override
         protected void before() throws Throwable {

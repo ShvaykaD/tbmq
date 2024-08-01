@@ -20,9 +20,15 @@ import org.junit.extensions.cpsuite.ClasspathSuite.ClassnameFilters;
 import org.junit.runner.RunWith;
 
 @RunWith(ClasspathSuite.class)
-@ClassnameFilters(
-        "org.thingsboard.mqtt.broker.dao.redis.DeviceMsgServiceTest"
-)
-public class RedisSqlTestSuite extends AbstractRedisContainer {
+@ClassnameFilters({
+        "org.thingsboard.mqtt.broker.dao.service.*ServiceTest",
+        "org.thingsboard.mqtt.broker.dao.client.device.*ServiceTest",
+        "org.thingsboard.mqtt.broker.dao.data.*Test",
+        "org.thingsboard.mqtt.broker.dao.sqlts.sql.*Test",
+        "org.thingsboard.mqtt.broker.dao.util.protocol.*Test",
+        "org.thingsboard.mqtt.broker.dao.validation.*Test",
+        "org.thingsboard.mqtt.broker.dao.ws.*Test"
+})
+public class DaoRedisClusterServiceTestSuite extends AbstractRedisClusterContainer {
 
 }

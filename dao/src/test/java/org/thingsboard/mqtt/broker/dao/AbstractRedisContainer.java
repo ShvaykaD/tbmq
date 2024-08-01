@@ -25,11 +25,11 @@ import java.util.List;
 @Slf4j
 public class AbstractRedisContainer {
 
-    @ClassRule(order = 0)
+    @ClassRule
     public static GenericContainer redis = new GenericContainer("redis:7.2")
             .withExposedPorts(6379);
 
-    @ClassRule(order = 1)
+    @ClassRule
     public static ExternalResource resource = new ExternalResource() {
         @Override
         protected void before() throws Throwable {
