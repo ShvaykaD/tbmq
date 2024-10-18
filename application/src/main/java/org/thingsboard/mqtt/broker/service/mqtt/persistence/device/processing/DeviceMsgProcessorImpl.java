@@ -15,6 +15,7 @@
  */
 package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 
+import io.lettuce.core.RedisFuture;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -39,16 +40,25 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
     private final DeviceMsgService deviceMsgService;
 
     @Override
-    public void persistClientDeviceMessages(ClientIdMessagesPack pack, DefaultClientIdPersistedMsgsCallback callback) {
+    public RedisFuture<Long> persistClientDeviceMessages(ClientIdMessagesPack pack, DefaultClientIdPersistedMsgsCallback callback) {
         String clientId = pack.clientId();
         List<DevicePublishMsg> devicePublishMessages = pack.messages();
         clientLogger.logEvent(clientId, this.getClass(), "Start persisting DEVICE msgs");
-        try {
-            callback.onSuccess(deviceMsgService.saveAndReturnPreviousPacketId(clientId, devicePublishMessages, false));
-        } catch (Exception e) {
-            callback.onFailure(e);
-        }
+//        try {
+        RedisFuture<Long> future = deviceMsgService.saveAndReturnPreviousPacketId(clientId, devicePublishMessages, false);
+//            RedisFuture<Long> integerRedisFuture = deviceMsgService.saveAndReturnPreviousPacketId(clientId, devicePublishMessages, false);
+//            integerRedisFuture.whenComplete((aLong, throwable) -> {
+//                if (throwable != null) {
+//                    log.error("Error saving device msgs", throwable);
+//                }
+//                callback.onSuccess(Math.toIntExact(aLong));
+//            });
+//        } catch (Exception e) {
+//            callback.onFailure(e);
+//        }
         clientLogger.logEvent(clientId, this.getClass(), "Finished persisting DEVICE msgs");
+        return future;
+//        return null;
     }
 
     @Override
@@ -80,6 +90,11 @@ public class DeviceMsgProcessorImpl implements DeviceMsgProcessor {
                         ProtoConverter.convertToPublishMsgProto(devicePublishMsg));
             }
         }
+    }
+
+    @Override
+    public void flushSaveCommands() {
+        deviceMsgService.flushSaveCommands();
     }
 
     private boolean messageWasPersisted(DevicePublishMsg devicePublishMsg) {

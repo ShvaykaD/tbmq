@@ -1,12 +1,12 @@
 /**
  * Copyright © 2016-2024 The Thingsboard Authors
- *
+ * <p>
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,8 +18,11 @@ package org.thingsboard.mqtt.broker.cache;
 import io.github.bucket4j.distributed.serialization.Mapper;
 import io.github.bucket4j.redis.jedis.Bucket4jJedis;
 import io.github.bucket4j.redis.jedis.cas.JedisBasedProxyManager;
+import io.lettuce.core.cluster.RedisClusterClient;
+import io.lettuce.core.cluster.api.StatefulRedisClusterConnection;
 import lombok.Data;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
@@ -30,6 +33,7 @@ import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisNode;
 import org.springframework.data.redis.connection.jedis.JedisConnectionFactory;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.format.support.DefaultFormattingConversionService;
@@ -91,12 +95,33 @@ public abstract class TBRedisCacheConfiguration {
     @Value("${cache.stats.enabled:true}")
     private boolean cacheStatsEnabled;
 
-    @Bean
-    public RedisConnectionFactory redisConnectionFactory() {
+    @Bean(name = "jedisConnectionFactory")
+    public RedisConnectionFactory jedisConnectionFactory() {
         return loadFactory();
     }
 
+    @Bean(name = "lettuceConnectionFactory")
+    public RedisConnectionFactory lettuceConnectionFactory() {
+        return loadLettuceFactory();
+    }
+
+    @Bean(name = "saveLettuceConnection")
+    public StatefulRedisClusterConnection<String, String> saveLettuceConnection() {
+        LettuceConnectionFactory lettuceConnectionFactory = (LettuceConnectionFactory) lettuceConnectionFactory();
+        RedisClusterClient redisClusterClient = (RedisClusterClient) lettuceConnectionFactory.getNativeClient();
+        return redisClusterClient.connect();
+    }
+
+//    @Bean(name = "removeLettuceConnection")
+//    public StatefulRedisClusterConnection<String, String> removeLettuceConnection() {
+//        LettuceConnectionFactory lettuceConnectionFactory = (LettuceConnectionFactory) lettuceConnectionFactory();
+//        RedisClusterClient redisClusterClient = (RedisClusterClient) lettuceConnectionFactory.getNativeClient();
+//        return redisClusterClient.connect();
+//    }
+
     protected abstract JedisConnectionFactory loadFactory();
+
+    protected abstract LettuceConnectionFactory loadLettuceFactory();
 
     protected abstract UnifiedJedis loadUnifiedJedis();
 
@@ -108,7 +133,7 @@ public abstract class TBRedisCacheConfiguration {
     }
 
     @Bean
-    public CacheManager cacheManager(RedisConnectionFactory cf) {
+    public CacheManager cacheManager(@Qualifier("jedisConnectionFactory") RedisConnectionFactory cf) {
         DefaultFormattingConversionService redisConversionService = new DefaultFormattingConversionService();
         RedisCacheConfiguration.registerDefaultConverters(redisConversionService);
         RedisCacheConfiguration configuration = createRedisCacheConfig(redisConversionService);
@@ -139,7 +164,7 @@ public abstract class TBRedisCacheConfiguration {
     @Bean
     public RedisTemplate<String, Object> redisTemplate() {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
-        template.setConnectionFactory(redisConnectionFactory());
+        template.setConnectionFactory(jedisConnectionFactory());
         template.setKeySerializer(new StringRedisSerializer());
         template.setValueSerializer(new StringRedisSerializer());
         return template;

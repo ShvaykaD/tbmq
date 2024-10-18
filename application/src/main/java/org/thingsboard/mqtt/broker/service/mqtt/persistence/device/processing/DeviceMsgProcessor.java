@@ -15,14 +15,17 @@
  */
 package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.processing;
 
+import io.lettuce.core.RedisFuture;
 import org.thingsboard.mqtt.broker.common.data.DevicePublishMsg;
 
 import java.util.List;
 
 public interface DeviceMsgProcessor {
 
-    void persistClientDeviceMessages(ClientIdMessagesPack clientIdMessagesPack, DefaultClientIdPersistedMsgsCallback defaultPersistMsgCallback);
+    RedisFuture<Long> persistClientDeviceMessages(ClientIdMessagesPack clientIdMessagesPack, DefaultClientIdPersistedMsgsCallback defaultPersistMsgCallback);
 
     void deliverClientDeviceMessages(String clientId, List<DevicePublishMsg> devicePublishMessages);
+
+    void flushSaveCommands();
 
 }

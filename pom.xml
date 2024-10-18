@@ -1105,11 +1105,18 @@
                 <groupId>redis.clients</groupId>
                 <artifactId>jedis</artifactId>
                 <version>${jedis.version}</version>
+<!--                <exclusions>-->
+<!--                    <exclusion>-->
+<!--                        <groupId>io.lettuce.core</groupId>-->
+<!--                        <artifactId>lettuce-core</artifactId>-->
+<!--                    </exclusion>-->
+<!--                </exclusions>-->
             </dependency>
             <dependency>
                 <groupId>io.lettuce</groupId>
                 <artifactId>lettuce-core</artifactId>
                 <version>${lettuce.version}</version>
+                <scope>compile</scope>
             </dependency>
             <dependency>
                 <groupId>org.springframework.data</groupId>

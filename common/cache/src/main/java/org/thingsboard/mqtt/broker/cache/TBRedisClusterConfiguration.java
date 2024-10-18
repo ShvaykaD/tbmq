@@ -15,11 +15,14 @@
  */
 package org.thingsboard.mqtt.broker.cache;
 
+import io.lettuce.core.ClientOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisClusterConfiguration;
 import org.springframework.data.redis.connection.jedis.JedisConnectionFactory;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
+import org.springframework.data.redis.connection.lettuce.LettucePoolingClientConfiguration;
 import redis.clients.jedis.ConnectionPoolConfig;
 import redis.clients.jedis.DefaultJedisClientConfig;
 import redis.clients.jedis.JedisCluster;
@@ -63,4 +66,19 @@ public class TBRedisClusterConfiguration extends TBRedisCacheConfiguration {
             return new JedisConnectionFactory(clusterConfiguration, buildPoolConfig());
         }
     }
+
+    @Override
+    protected LettuceConnectionFactory loadLettuceFactory() {
+        RedisClusterConfiguration clusterConfiguration = new RedisClusterConfiguration();
+        clusterConfiguration.setClusterNodes(getNodes(clusterNodes));
+        clusterConfiguration.setMaxRedirects(maxRedirects);
+        clusterConfiguration.setPassword(password);
+
+        var lettucePoolingClientConfigBuilder = LettucePoolingClientConfiguration.builder();
+        if (!useDefaultPoolConfig) {
+            lettucePoolingClientConfigBuilder.poolConfig(buildConnectionPoolConfig());
+        }
+        return new LettuceConnectionFactory(clusterConfiguration, lettucePoolingClientConfigBuilder.build());
+    }
+
 }

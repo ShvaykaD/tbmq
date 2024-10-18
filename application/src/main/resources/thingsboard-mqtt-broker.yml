@@ -212,9 +212,9 @@ listener:
 queue:
   msg-all:
     # Number of parallel consumers for 'tbmq.msg.all' topic. Should not be more than the number of partitions in topic
-    consumers-count: "${TB_MSG_ALL_CONSUMERS_COUNT:4}"
+    consumers-count: "${TB_MSG_ALL_CONSUMERS_COUNT:6}"
     # Number of threads in the pool to process consumers tasks. Should not be less than number of consumers
-    threads-count: "${TB_MSG_ALL_THREADS_COUNT:4}"
+    threads-count: "${TB_MSG_ALL_THREADS_COUNT:6}"
     # Interval in milliseconds to poll messages from 'tbmq.msg.all' topic
     poll-interval: "${TB_MSG_ALL_POLL_INTERVAL:100}"
     # Timeout in milliseconds for processing the pack of messages from 'tbmq.msg.all' topic
@@ -227,7 +227,7 @@ queue:
     # Enable/disable processing of consumed messages in parallel (grouped by publishing client id to preserve order).
     # Helpful when the same client publishes lots of messages in a short amount of time.
     # It is recommended to count the impact of this parameter before setting it on production
-    msg-parallel-processing: "${TB_MSG_ALL_PARALLEL_PROCESSING:false}"
+    msg-parallel-processing: "${TB_MSG_ALL_PARALLEL_PROCESSING:true}"
   application-persisted-msg:
     # Interval in milliseconds to poll messages from Application topics
     poll-interval: "${TB_APP_PERSISTED_MSG_POLL_INTERVAL:100}"
@@ -244,9 +244,9 @@ queue:
     shared-topic-validation: "${TB_APP_PERSISTED_MSG_SHARED_TOPIC_VALIDATION:true}"
   device-persisted-msg:
     # Number of parallel consumers for 'tbmq.msg.persisted' topic. Should not be more than the number of partitions in topic
-    consumers-count: "${TB_DEVICE_PERSISTED_MSG_CONSUMERS_COUNT:3}"
+    consumers-count: "${TB_DEVICE_PERSISTED_MSG_CONSUMERS_COUNT:6}"
     # Number of threads in the pool to process consumers tasks
-    threads-count: "${TB_DEVICE_PERSISTED_MSG_THREADS_COUNT:3}"
+    threads-count: "${TB_DEVICE_PERSISTED_MSG_THREADS_COUNT:6}"
     # Interval in milliseconds to poll messages from 'tbmq.msg.persisted' topic
     poll-interval: "${TB_DEVICE_PERSISTED_MSG_POLL_INTERVAL:100}"
     # Timeout in milliseconds for processing the pack of messages from 'tbmq.msg.persisted' topic
@@ -373,7 +373,7 @@ queue:
       # Topic for persisting incoming PUBLISH messages
       topic: "${TB_KAFKA_MSG_ALL_TOPIC:tbmq.msg.all}"
       # Kafka topic properties separated by semicolon for `tbmq.msg.all` topic
-      topic-properties: "${TB_KAFKA_MSG_ALL_TOPIC_PROPERTIES:retention.ms:604800000;segment.bytes:26214400;retention.bytes:2147483648;partitions:24;replication.factor:1}"
+      topic-properties: "${TB_KAFKA_MSG_ALL_TOPIC_PROPERTIES:retention.ms:604800000;segment.bytes:26214400;retention.bytes:2147483648;partitions:12;replication.factor:1}"
       # Additional Kafka consumer configs separated by semicolon for `tbmq.msg.all` topic
       additional-consumer-config: "${TB_KAFKA_MSG_ALL_ADDITIONAL_CONSUMER_CONFIG:}"
       # Additional Kafka producer configs separated by semicolon for `tbmq.msg.all` topic
@@ -684,11 +684,11 @@ mqtt:
     # Max number of messages that can be stored in queue before client gets connected and start processing them
     max-size: "${MQTT_PRE_CONNECT_QUEUE_MAX_SIZE:10000}"
   # Max number of PUBLISH messages not yet responded
-  max-in-flight-msgs: "${MQTT_MAX_IN_FLIGHT_MSGS:1000}"
+  max-in-flight-msgs: "${MQTT_MAX_IN_FLIGHT_MSGS:65000}"
   flow-control:
     # Enable/disable flow control MQTT 5 feature for server. If disabled, the server will not control the number of messages sent to subscribers by "Receive Maximum".
     # This feature works for MQTT 3.x clients as well when enabled. "Receive Maximum" for MQTT 3.x clients can be set using `MQTT_FLOW_CONTROL_MQTT_3X_RECEIVE_MAX` parameter
-    enabled: "${MQTT_FLOW_CONTROL_ENABLED:true}"
+    enabled: "${MQTT_FLOW_CONTROL_ENABLED:false}"
     # Timeout to wait in case there is nothing to process regarding the flow control feature. The separate thread is responsible for sending delayed messages to subscribers.
     # If no clients are affected by flow control restrictions, there is no need to continuously try to find and send such messages
     timeout: "${MQTT_FLOW_CONTROL_TIMEOUT:1000}"
@@ -765,7 +765,7 @@ mqtt:
     device:
       persisted-messages:
         # Maximum number of PUBLISH messages stored for each persisted DEVICE client
-        limit: "${MQTT_PERSISTENT_SESSION_DEVICE_PERSISTED_MESSAGES_LIMIT:10000}"
+        limit: "${MQTT_PERSISTENT_SESSION_DEVICE_PERSISTED_MESSAGES_LIMIT:1000}"
         # TTL of persisted DEVICE messages in seconds. The current value corresponds to one week
         ttl: "${MQTT_PERSISTENT_SESSION_DEVICE_PERSISTED_MESSAGES_TTL:604800}"
         # If enabled, each message is published to persistent DEVICE client subscribers with flush. When disabled, the messages are buffered in the channel and are flushed once in a while
@@ -855,7 +855,7 @@ cache:
 redis:
   connection:
     # Connection type: standalone or cluster or sentinel
-    type: "${REDIS_CONNECTION_TYPE:standalone}"
+    type: "${REDIS_CONNECTION_TYPE:cluster}"
   standalone:
     # Redis connection host
     host: "${REDIS_HOST:localhost}"
@@ -873,11 +873,11 @@ redis:
     usePoolConfig: "${REDIS_CLIENT_USE_POOL_CONFIG:false}"
   cluster:
     # Comma-separated list of "host:port" pairs to bootstrap from
-    nodes: "${REDIS_NODES:}"
+    nodes: "${REDIS_NODES:localhost:6379,localhost:6380,localhost:6381,localhost:6382,localhost:6383,localhost:6384}"
     # Maximum number of redirects to follow when executing commands across the cluster
     maxRedirects: "${REDIS_MAX_REDIRECTS:12}"
     # If set false will be used pool config build from values of the pool config section
-    useDefaultPoolConfig: "${REDIS_CLUSTER_USE_DEFAULT_POOL_CONFIG:true}"
+    useDefaultPoolConfig: "${REDIS_CLUSTER_USE_DEFAULT_POOL_CONFIG:false}"
   sentinel:
     # Name of master node
     master: "${REDIS_MASTER:}"
@@ -890,7 +890,7 @@ redis:
   # DB index
   db: "${REDIS_DB:0}"
   # DB password
-  password: "${REDIS_PASSWORD:}"
+  password: "${REDIS_PASSWORD:bitnami}"
   # Pool config
   pool_config:
     # Maximum number of connections that can be allocated by the connection pool
@@ -900,9 +900,9 @@ redis:
     # Minimum number of idle connections that can be maintained in the pool without being closed
     minIdle: "${REDIS_POOL_CONFIG_MIN_IDLE:16}"
     # Enable/Disable PING command sent when a connection is borrowed
-    testOnBorrow: "${REDIS_POOL_CONFIG_TEST_ON_BORROW:true}"
+    testOnBorrow: "${REDIS_POOL_CONFIG_TEST_ON_BORROW:false}"
     # The property is used to specify whether to test the connection before returning it to the connection pool
-    testOnReturn: "${REDIS_POOL_CONFIG_TEST_ON_RETURN:true}"
+    testOnReturn: "${REDIS_POOL_CONFIG_TEST_ON_RETURN:false}"
     # Indicates whether to use the ping command to monitor the connection validity during idle resource monitoring. Invalid connections will be destroyed
     testWhileIdle: "${REDIS_POOL_CONFIG_TEST_WHILE_IDLE:true}"
     # Minimum time the connection should be idle before it can be evicted from the connection pool. The value is set in milliseconds
@@ -914,7 +914,7 @@ redis:
     # Specifies the number of connections to test for eviction during each eviction run
     numberTestsPerEvictionRun: "${REDIS_POOL_CONFIG_NUMBER_TESTS_PER_EVICTION_RUN:3}"
     # Determines the behavior when a thread requests a connection from the pool, but there are no available connections, and the pool cannot create more due to the maxTotal configuration
-    blockWhenExhausted: "${REDIS_POOL_CONFIG_BLOCK_WHEN_EXHAUSTED:true}"
+    blockWhenExhausted: "${REDIS_POOL_CONFIG_BLOCK_WHEN_EXHAUSTED:false}"
 
 # Statistics parameters
 stats:

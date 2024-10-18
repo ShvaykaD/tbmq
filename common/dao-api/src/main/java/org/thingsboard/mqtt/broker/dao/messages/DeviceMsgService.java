@@ -15,6 +15,7 @@
  */
 package org.thingsboard.mqtt.broker.dao.messages;
 
+import io.lettuce.core.RedisFuture;
 import org.thingsboard.mqtt.broker.common.data.DevicePublishMsg;
 
 import java.nio.file.Path;
@@ -23,7 +24,7 @@ import java.util.List;
 public interface DeviceMsgService {
 
     // TODO: failOnConflict, kafka rebalancing issue. Need to be tested.
-    int saveAndReturnPreviousPacketId(String clientId, List<DevicePublishMsg> devicePublishMessages, boolean failOnConflict);
+    RedisFuture<Long> saveAndReturnPreviousPacketId(String clientId, List<DevicePublishMsg> devicePublishMessages, boolean failOnConflict);
 
     List<DevicePublishMsg> findPersistedMessages(String clientId);
 
@@ -48,5 +49,7 @@ public interface DeviceMsgService {
      */
     @Deprecated(forRemoval = true, since = "2.0.0")
     void importFromCsvFile(Path filePath);
+
+    void flushSaveCommands();
 
 }

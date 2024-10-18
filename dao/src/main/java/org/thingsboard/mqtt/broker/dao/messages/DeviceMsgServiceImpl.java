@@ -15,12 +15,16 @@
  */
 package org.thingsboard.mqtt.broker.dao.messages;
 
+import io.lettuce.core.RedisFuture;
+import io.lettuce.core.ScriptOutputType;
+import io.lettuce.core.cluster.api.StatefulRedisClusterConnection;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.DecoderException;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.dao.InvalidDataAccessApiUsageException;
@@ -35,6 +39,7 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.stereotype.Service;
 import org.thingsboard.mqtt.broker.common.data.DevicePublishMsg;
 import org.thingsboard.mqtt.broker.common.util.JacksonUtil;
+import org.thingsboard.mqtt.broker.common.util.ThingsBoardThreadFactory;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.util.JedisClusterCRC16;
@@ -47,12 +52,18 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 public class DeviceMsgServiceImpl implements DeviceMsgService {
+
+    private ScheduledExecutorService service = Executors.newSingleThreadScheduledExecutor();
 
     private static final int IMPORT_TO_REDIS_BATCH_SIZE = 1000;
 
@@ -77,10 +88,10 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             local messages = cjson.decode(ARGV[2])
             -- Fetch the last packetId from the key-value store
             local lastPacketId = tonumber(redis.call('GET', lastPacketIdKey)) or 0
-            
+                        
             -- Get the current maximum score in the sorted set
             local maxScoreElement = redis.call('ZRANGE', messagesKey, 0, 0, 'REV', 'WITHSCORES')
-            
+                        
             -- Check if the maxScoreElement is non-empty
             local score
             if #maxScoreElement > 0 then
@@ -88,10 +99,10 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             else
                score = lastPacketId
             end
-            
+                        
             -- Track the first packet ID
             local previousPacketId = lastPacketId
-            
+                        
             -- Add each message to the sorted set and as a separate key
             for _, msg in ipairs(messages) do
                 lastPacketId = lastPacketId + 1
@@ -189,7 +200,7 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             local lastPacketIdKey = KEYS[2]
             local messages = cjson.decode(ARGV[1])
             local lastPacketId = 0
-            
+                        
             -- Get the current maximum score in the sorted set
             local maxScoreElement = redis.call('ZRANGE', messagesKey, 0, 0, 'REV', 'WITHSCORES')
             -- Check if the maxScoreElement is non-empty
@@ -199,7 +210,7 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             else
                score = 0
             end
-            
+                        
             -- Add each message to the sorted set using packetId as the score
             for _, msg in ipairs(messages) do
                 local msgKey = messagesKey .. "_" .. msg.packetId
@@ -215,7 +226,7 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
 
             -- Update the last packetId in the key-value store
             redis.call('SET', lastPacketIdKey, lastPacketId)
-            
+                        
             return nil
             """);
 
@@ -230,11 +241,21 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
 
     private byte[] messagesLimitBytes;
 
-    private final JedisConnectionFactory connectionFactory;
+    private final JedisConnectionFactory jedisConnectionFactory;
+//    private final LettuceConnectionFactory lettuceConnectionFactory;
+    private final StatefulRedisClusterConnection<String, String> saveLettuceConnection;
+//    private final StatefulRedisClusterConnection<String, String> removeLettuceConnection;
     private final boolean installProfileActive;
 
-    public DeviceMsgServiceImpl(RedisConnectionFactory redisConnectionFactory, Environment environment) {
-        this.connectionFactory = (JedisConnectionFactory) redisConnectionFactory;
+    public DeviceMsgServiceImpl(@Qualifier("jedisConnectionFactory") RedisConnectionFactory jedisConnectionFactory,
+//                                @Qualifier("lettuceConnectionFactory") RedisConnectionFactory lettuceConnectionFactory,
+                                @Qualifier("saveLettuceConnection") StatefulRedisClusterConnection<String, String> saveLettuceConnection,
+//                                @Qualifier("removeLettuceConnection") StatefulRedisClusterConnection<String, String> removeLettuceConnection,
+                                Environment environment) {
+        this.jedisConnectionFactory = (JedisConnectionFactory) jedisConnectionFactory;
+//        this.lettuceConnectionFactory = (LettuceConnectionFactory) lettuceConnectionFactory;
+        this.saveLettuceConnection = saveLettuceConnection;
+//        this.removeLettuceConnection = removeLettuceConnection;
         this.installProfileActive = Arrays.asList(environment.getActiveProfiles()).contains("install");
     }
 
@@ -244,7 +265,7 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             throw new IllegalArgumentException("Persisted messages limit can't be greater than 65535!");
         }
         messagesLimitBytes = intToBytes(messagesLimit);
-        try (var connection = connectionFactory.getConnection()) {
+        try (var connection = jedisConnectionFactory.getConnection()) {
             loadScript(connection, ADD_MESSAGES_SCRIPT_SHA, ADD_MESSAGES_SCRIPT);
             loadScript(connection, GET_MESSAGES_SCRIPT_SHA, GET_MESSAGES_SCRIPT);
             loadScript(connection, REMOVE_MESSAGES_SCRIPT_SHA, REMOVE_MESSAGES_SCRIPT);
@@ -258,58 +279,60 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
         } catch (Throwable t) {
             throw new RuntimeException("Failed to init persisted device messages cache service!", t);
         }
+        saveLettuceConnection.setAutoFlushCommands(false);
+//        removeLettuceConnection.setAutoFlushCommands(false);
+//        service.scheduleAtFixedRate(removeLettuceConnection::flushCommands, 100, 5, TimeUnit.MILLISECONDS);
     }
 
     @Override
-    public int saveAndReturnPreviousPacketId(String clientId, List<DevicePublishMsg> devicePublishMessages, boolean failOnConflict) {
+    public RedisFuture<Long> saveAndReturnPreviousPacketId(String clientId, List<DevicePublishMsg> devicePublishMessages, boolean failOnConflict) {
         if (log.isTraceEnabled()) {
             log.trace("Save persisted messages, clientId - {}, devicePublishMessages size - {}", clientId, devicePublishMessages.size());
         }
         var messages = devicePublishMessages.stream()
                 .map(devicePublishMsg -> new DevicePublishMsgEntity(devicePublishMsg, defaultTtl))
                 .collect(Collectors.toCollection(ArrayList::new));
-        byte[] rawLastPacketIdKey = toLastPacketIdKey(clientId);
-        byte[] rawMessagesKey = toMessagesCacheKey(clientId);
-        byte[] messagesBytes = JacksonUtil.writeValueAsBytes(messages);
-        try (var connection = getConnection(rawMessagesKey)) {
-            Long prevPacketId;
+//        byte[] rawLastPacketIdKey = toLastPacketIdKey(clientId);
+//        byte[] rawMessagesKey = toMessagesCacheKey(clientId);
+//        byte[] messagesBytes = JacksonUtil.writeValueAsBytes(messages);
+//        try (var connection = getLettuceConnection()) {
+        RedisFuture<Long> prevPacketIdFuture;
+        String messagesCacheKeyStr = toMessagesCacheKeyStr(clientId);
+        String lastPacketIdKeyStr = toLastPacketIdKeyStr(clientId);
+//        try (StatefulRedisClusterConnection<String, String> connection = getLettuceConnection()) {
             try {
-                prevPacketId = connection.scriptingCommands().evalSha(
-                        Objects.requireNonNull(ADD_MESSAGES_SCRIPT_SHA),
-                        ReturnType.INTEGER,
-                        2,
-                        rawMessagesKey,
-                        rawLastPacketIdKey,
-                        messagesLimitBytes,
-                        messagesBytes
+                prevPacketIdFuture = saveLettuceConnection.async().evalsha(
+                        "1a36112b30eda656ff34629a18d4890499a79256",
+                        ScriptOutputType.INTEGER,
+                        new String[]{messagesCacheKeyStr, lastPacketIdKeyStr},
+                        String.valueOf(messagesLimit),
+                        JacksonUtil.toString(messages)
                 );
             } catch (InvalidDataAccessApiUsageException e) {
-                loadScript(connection, ADD_MESSAGES_SCRIPT_SHA, ADD_MESSAGES_SCRIPT);
+                loadScriptWithLettuce(saveLettuceConnection, ADD_MESSAGES_SCRIPT_SHA, ADD_MESSAGES_SCRIPT);
                 try {
-                    prevPacketId = connection.scriptingCommands().evalSha(
-                            Objects.requireNonNull(ADD_MESSAGES_SCRIPT_SHA),
-                            ReturnType.INTEGER,
-                            2,
-                            rawMessagesKey,
-                            rawLastPacketIdKey,
-                            messagesLimitBytes,
-                            messagesBytes
+                    prevPacketIdFuture = saveLettuceConnection.async().evalsha(
+                            "1a36112b30eda656ff34629a18d4890499a79256",
+                            ScriptOutputType.INTEGER,
+                            new String[]{messagesCacheKeyStr, lastPacketIdKeyStr},
+                            String.valueOf(messagesLimit),
+                            JacksonUtil.toString(messages)
                     );
                 } catch (InvalidDataAccessApiUsageException ignored) {
-                    log.debug("Slowly executing eval instead of fast evalSha [{}] due to exception throwing on sha evaluation: ", connection, e);
-                    prevPacketId = connection.scriptingCommands().eval(
+                    log.debug("Slowly executing eval instead of fast evalSha [{}] due to exception throwing on sha evaluation: ", saveLettuceConnection, e);
+                    prevPacketIdFuture = saveLettuceConnection.async().eval(
                             Objects.requireNonNull(ADD_MESSAGES_SCRIPT),
-                            ReturnType.INTEGER,
-                            2,
-                            rawMessagesKey,
-                            rawLastPacketIdKey,
-                            messagesLimitBytes,
-                            messagesBytes
+                            ScriptOutputType.INTEGER,
+                            new String[]{messagesCacheKeyStr, lastPacketIdKeyStr},
+                            String.valueOf(messagesLimit),
+                            JacksonUtil.toString(messages)
                     );
                 }
             }
-            return prevPacketId != null ? prevPacketId.intValue() : 0;
-        }
+//        }
+//            return prevPacketId != null ? prevPacketId.intValue() : 0;
+        return prevPacketIdFuture;
+//        }
     }
 
     @Override
@@ -402,41 +425,38 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
         if (log.isTraceEnabled()) {
             log.trace("Removing persisted message, clientId - {}, packetId - {}", clientId, packetId);
         }
-        byte[] rawMessagesKey = toMessagesCacheKey(clientId);
-        byte[] packetIdBytes = intToBytes(packetId);
-        try (var connection = getConnection(rawMessagesKey)) {
+        String messagesCacheKeyStr = toMessagesCacheKeyStr(clientId);
+        try {
             try {
-                connection.scriptingCommands().evalSha(
-                        Objects.requireNonNull(REMOVE_MESSAGE_SCRIPT_SHA),
-                        ReturnType.VALUE,
-                        1,
-                        rawMessagesKey,
-                        packetIdBytes
-                );
+                saveLettuceConnection.async().evalsha(
+                        "038e09c6e313eab0d5be4f31361250f4179bc38c",
+                        ScriptOutputType.INTEGER,
+                        new String[]{messagesCacheKeyStr},
+                        String.valueOf(packetId)
+                ).thenAccept(o -> log.debug("ack"));
             } catch (InvalidDataAccessApiUsageException e) {
-                loadScript(connection, REMOVE_MESSAGE_SCRIPT_SHA, REMOVE_MESSAGE_SCRIPT);
+                loadScriptWithLettuce(saveLettuceConnection, REMOVE_MESSAGE_SCRIPT_SHA, REMOVE_MESSAGE_SCRIPT);
                 try {
-                    connection.scriptingCommands().evalSha(
-                            Objects.requireNonNull(REMOVE_MESSAGE_SCRIPT_SHA),
-                            ReturnType.VALUE,
-                            1,
-                            rawMessagesKey,
-                            packetIdBytes
+                    saveLettuceConnection.async().evalsha(
+                            "038e09c6e313eab0d5be4f31361250f4179bc38c",
+                            ScriptOutputType.INTEGER,
+                            new String[]{messagesCacheKeyStr},
+                            String.valueOf(packetId)
                     );
                 } catch (InvalidDataAccessApiUsageException ignored) {
-                    log.debug("Slowly executing eval instead of fast evalSha [{}] due to exception throwing on sha evaluation: ", connection, e);
-                    connection.scriptingCommands().eval(
+                    log.debug("Slowly executing eval instead of fast evalSha [{}] due to exception throwing on sha evaluation: ", saveLettuceConnection, e);
+                    saveLettuceConnection.async().eval(
                             Objects.requireNonNull(REMOVE_MESSAGE_SCRIPT),
-                            ReturnType.VALUE,
-                            1,
-                            rawMessagesKey,
-                            packetIdBytes
+                            ScriptOutputType.INTEGER,
+                            new String[]{messagesCacheKeyStr},
+                            String.valueOf(packetId)
                     );
                 }
             }
         } catch (Exception e) {
             throw new RuntimeException("Failed to remove persisted message, clientId - " + clientId + " packetId - " + packetId, e);
         }
+//        doFlush();
     }
 
     @Override
@@ -527,6 +547,11 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             log.trace("Import from csv file: {}", filePath);
         }
         migrateMessagesToRedis(filePath);
+    }
+
+    @Override
+    public void flushSaveCommands() {
+        saveLettuceConnection.flushCommands();
     }
 
     private void migrateMessagesToRedis(Path filePath) {
@@ -621,6 +646,16 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
         return rawKey;
     }
 
+    private String toMessagesCacheKeyStr(String clientId) {
+        ClientIdMessagesCacheKey clientIdMessagesCacheKey = new ClientIdMessagesCacheKey(clientId, cachePrefix);
+        return clientIdMessagesCacheKey.toString();
+    }
+
+    private String toLastPacketIdKeyStr(String clientId) {
+        ClientIdLastPacketIdCacheKey clientIdLastPacketIdCacheKey = new ClientIdLastPacketIdCacheKey(clientId, cachePrefix);
+        return clientIdLastPacketIdCacheKey.toString();
+    }
+
     private byte[] toLastPacketIdKey(String clientId) {
         ClientIdLastPacketIdCacheKey clientIdLastPacketIdCacheKey = new ClientIdLastPacketIdCacheKey(clientId, cachePrefix);
         String stringValue = clientIdLastPacketIdCacheKey.toString();
@@ -641,25 +676,49 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
     }
 
     private RedisConnection getConnection(byte[] rawKey) {
-        if (!connectionFactory.isRedisClusterAware()) {
-            return connectionFactory.getConnection();
+        if (!jedisConnectionFactory.isRedisClusterAware()) {
+            return jedisConnectionFactory.getConnection();
         }
-        RedisConnection connection = connectionFactory.getClusterConnection();
+        RedisConnection connection = jedisConnectionFactory.getClusterConnection();
 
         int slotNum = JedisClusterCRC16.getSlot(rawKey);
         Jedis jedis = new Jedis((((JedisClusterConnection) connection).getNativeConnection().getConnectionFromSlot(slotNum)));
 
         JedisConnection jedisConnection = new JedisConnection(jedis, MOCK_POOL, jedis.getDB());
-        jedisConnection.setConvertPipelineAndTxResults(connectionFactory.getConvertPipelineAndTxResults());
+        jedisConnection.setConvertPipelineAndTxResults(jedisConnectionFactory.getConvertPipelineAndTxResults());
 
         return jedisConnection;
     }
+
+//
+//    private StatefulRedisClusterConnection<String, String> getLettuceConnection() {
+//        if (lettuceConnectionFactory.isClusterAware()) {
+//            RedisClusterClient redisClusterClient = (RedisClusterClient) lettuceConnectionFactory.getNativeClient();
+//            return redisClusterClient.connect();
+//        }
+//        RedisClient redisClient = (RedisClient) lettuceConnectionFactory.getNativeClient();
+////        return redisClient.connect();
+//        return null;
+//    }
 
     private void loadScript(RedisConnection connection, byte[] scriptSha, byte[] script) {
         String scriptShaStr = new String(Objects.requireNonNull(scriptSha));
         log.debug("Loading LUA with expected SHA [{}], connection [{}]", scriptShaStr, connection.getNativeConnection());
         String actualScriptSha = connection.scriptingCommands().scriptLoad(Objects.requireNonNull(script));
         validateSha(scriptSha, scriptShaStr, actualScriptSha, connection);
+    }
+
+    private void loadScriptWithLettuce(StatefulRedisClusterConnection connection, byte[] scriptSha, byte[] script) {
+        String scriptShaStr = new String(Objects.requireNonNull(scriptSha));
+        log.debug("Loading LUA with expected SHA [{}], connection [{}]", scriptShaStr, connection);
+        String actualScriptSha = connection.sync().scriptLoad(Objects.requireNonNull(script));
+        validateShaLettuce(scriptSha, scriptShaStr, actualScriptSha, connection);
+    }
+
+    private void validateShaLettuce(byte[] expectedSha, String expectedShaStr, String actualScriptSha, StatefulRedisClusterConnection connection) {
+        if (!Arrays.equals(expectedSha, stringSerializer.serialize(actualScriptSha))) {
+            log.error("SHA for script is wrong! Expected [{}] actual [{}] connection [{}]", expectedShaStr, actualScriptSha, connection);
+        }
     }
 
     private void validateSha(byte[] expectedSha, String expectedShaStr, String actualScriptSha, RedisConnection connection) {

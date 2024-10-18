@@ -21,6 +21,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.jedis.JedisClientConfiguration;
 import org.springframework.data.redis.connection.jedis.JedisConnectionFactory;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import redis.clients.jedis.ConnectionPoolConfig;
 import redis.clients.jedis.DefaultJedisClientConfig;
 import redis.clients.jedis.HostAndPort;
@@ -85,6 +86,11 @@ public class TBRedisStandaloneConfiguration extends TBRedisCacheConfiguration {
         } else {
             return new JedisConnectionFactory(standaloneConfiguration, buildClientConfig());
         }
+    }
+
+    @Override
+    protected LettuceConnectionFactory loadLettuceFactory() {
+        return null;
     }
 
     private JedisClientConfiguration buildClientConfig() {

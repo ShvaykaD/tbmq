@@ -20,6 +20,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisSentinelConfiguration;
 import org.springframework.data.redis.connection.jedis.JedisConnectionFactory;
+import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import redis.clients.jedis.ConnectionPoolConfig;
 import redis.clients.jedis.DefaultJedisClientConfig;
 import redis.clients.jedis.JedisSentineled;
@@ -71,6 +72,11 @@ public class TBRedisSentinelConfiguration extends TBRedisCacheConfiguration {
         } else {
             return new JedisConnectionFactory(redisSentinelConfiguration, buildPoolConfig());
         }
+    }
+
+    @Override
+    protected LettuceConnectionFactory loadLettuceFactory() {
+        return null;
     }
 
 }

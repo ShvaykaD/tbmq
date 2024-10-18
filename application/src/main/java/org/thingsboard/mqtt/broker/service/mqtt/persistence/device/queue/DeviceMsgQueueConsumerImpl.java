@@ -15,6 +15,7 @@
  */
 package org.thingsboard.mqtt.broker.service.mqtt.persistence.device.queue;
 
+import io.lettuce.core.RedisFuture;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +47,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -120,10 +122,22 @@ public class DeviceMsgQueueConsumerImpl implements DeviceMsgQueueConsumer {
                         }
                         submitStrategy.process(clientIdMessagesPack -> {
                             long clientIdPackProcessingStart = System.nanoTime();
-                            var callback = new DefaultClientIdPersistedMsgsCallback(clientIdMessagesPack.clientId(), ctx);
-                            deviceMsgProcessor.persistClientDeviceMessages(clientIdMessagesPack, callback);
-                            stats.logClientIdPackProcessingTime(System.nanoTime() - clientIdPackProcessingStart, TimeUnit.NANOSECONDS);
+//                            var callback = new DefaultClientIdPersistedMsgsCallback(clientIdMessagesPack.clientId(), ctx);
+                            CompletableFuture<Long> future = deviceMsgProcessor.persistClientDeviceMessages(clientIdMessagesPack, null).toCompletableFuture();
+                            future.whenComplete((aLong, throwable) -> {
+                                String clientId = clientIdMessagesPack.clientId();
+                                if (throwable != null) {
+                                    if (log.isTraceEnabled()) {
+                                        log.trace("[{}] Failed to persist device publish messages due to: ", clientId, throwable);
+                                    }
+                                    ctx.onFailure(clientId);
+                                }
+                                ctx.onSuccess(clientId, Math.toIntExact(aLong));
+                                stats.logClientIdPackProcessingTime(System.nanoTime() - clientIdPackProcessingStart, TimeUnit.NANOSECONDS);
+                            });
                         });
+
+                        deviceMsgProcessor.flushSaveCommands();
 
                         if (!stopped) {
                             ctx.await(packProcessingTimeout, TimeUnit.MILLISECONDS);
