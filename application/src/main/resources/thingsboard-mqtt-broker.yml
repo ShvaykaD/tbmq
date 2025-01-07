@@ -77,6 +77,24 @@ listener:
       shutdown_quiet_period: "${TCP_NETTY_SHUTDOWN_QUIET_PERIOD:0}"
       # The max time in seconds to wait until the executor is stopped
       shutdown_timeout: "${TCP_NETTY_SHUTDOWN_TIMEOUT:5}"
+  udp:
+    # Enable/disable MQTT UDP port listener
+    enabled: "${LISTENER_UDP_ENABLED:true}"
+    # MQTT UDP listener bind address
+    bind_address: "${LISTENER_UDP_BIND_ADDRESS:0.0.0.0}"
+    # MQTT UDP listener bind port
+    bind_port: "${LISTENER_UDP_BIND_PORT:1885}"
+    netty:
+      # Netty leak detector level: DISABLED, SIMPLE, ADVANCED, PARANOID
+      leak_detector_level: "${UDP_NETTY_LEAK_DETECTOR_LVL:DISABLED}"
+      # Netty worker group threads count
+      worker_group_thread_count: "${UDP_NETTY_WORKER_GROUP_THREADS:12}"
+      # Max payload size in bytes
+      max_payload_size: "${UDP_NETTY_MAX_PAYLOAD_SIZE:65536}"
+      # Period in seconds in graceful shutdown during which no new tasks are submitted
+      shutdown_quiet_period: "${UDP_NETTY_SHUTDOWN_QUIET_PERIOD:0}"
+      # The max time in seconds to wait until the executor is stopped
+      shutdown_timeout: "${UDP_NETTY_SHUTDOWN_TIMEOUT:5}"
   ssl:
     # Enable/disable MQTT SSL port listener
     enabled: "${LISTENER_SSL_ENABLED:false}"

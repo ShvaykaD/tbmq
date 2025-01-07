@@ -23,6 +23,7 @@ import java.util.List;
 public class BrokerConstants {
 
     public static final String TCP = "TCP";
+    public static final String UDP = "UDP";
     public static final String SSL = "SSL";
     public static final String WS = "WS";
     public static final String WSS = "WSS";
