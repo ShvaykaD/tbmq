@@ -57,17 +57,18 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
     private static final CSVFormat IMPORT_CSV_FORMAT = CSVFormat.Builder.create()
             .setHeader().setSkipHeaderRecord(true).build();
 
-    private static final String ADD_MESSAGES_SCRIPT_SHA = "b871298e156d1e8490eef02fdc96cc28d4442e36";
-    private static final String GET_MESSAGES_SCRIPT_SHA = "e083e5645a5f268448aca2ec1d3150ee6de510ef";
-    private static final String REMOVE_MESSAGES_SCRIPT_SHA = "efd7dd0e8b3ba4862b53691798fd5ff1f8f6e629";
-    private static final String REMOVE_MESSAGE_SCRIPT_SHA = "af40a579a941a140cace4e5243fc0921a4c7b4b0";
-    private static final String UPDATE_PACKET_TYPE_SCRIPT_SHA = "86164ab58880b91c4aee396bb5701fd6af1b0258";
+    private static final String ADD_MESSAGES_SCRIPT_SHA = "585eaf8f42fcd697bde5896a1d52957e9b8c1b94";
+    private static final String GET_MESSAGES_SCRIPT_SHA = "be1a4df0569114acd69b50c2a1af7638c91169b1";
+    private static final String REMOVE_MESSAGES_SCRIPT_SHA = "fdaa0cfde373ab23074b48e7d2a8594aad13a65b";
+    private static final String REMOVE_MESSAGE_SCRIPT_SHA = "4839a58972e424a23450c42bd2339f9519aea41d";
+    private static final String UPDATE_PACKET_TYPE_SCRIPT_SHA = "6690974a8f168db63b04145654b12c52317afa92";
     private static final String MIGRATE_FROM_POSTGRES_TO_REDIS_SCRIPT_SHA = "76ea84e42d6ab98e646ef8f88b99efd568721926";
 
     // TODO: consider why we set score = lastPacketId if set is empty instead of set it to 0.
     private static final String ADD_MESSAGES_SCRIPT = """
             local messagesKey = KEYS[1]
             local lastPacketIdKey = KEYS[2]
+            local offsetKey = KEYS[3]
             local maxMessagesSize = tonumber(ARGV[1])
             local messages = cjson.decode(ARGV[2])
             local defaultTtl = tonumber(ARGV[3])
@@ -82,7 +83,7 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             if #maxScoreElement > 0 then
                score = tonumber(maxScoreElement[2])
             else
-               score = lastPacketId
+               score = 0
             end
             
             -- Track the first packet ID
@@ -114,12 +115,17 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
                     redis.call('DEL', key)
                     redis.call('ZREM', messagesKey, key)
                 end
+                local currentOffset = tonumber(redis.call('GET', offsetKey)) or 0
+                redis.call('SET', offsetKey, currentOffset + numElementsToRemove)
             end
             return previousPacketId
             """;
     private static final String GET_MESSAGES_SCRIPT = """
             local messagesKey = KEYS[1]
+            local offsetKey = KEYS[2]
             local maxMessagesSize = tonumber(ARGV[1])
+            -- Get the current packetId offset value
+            local offset = tonumber(redis.call('GET', offsetKey)) or 0
             -- Get the range of elements from the sorted set
             local elements = redis.call('ZRANGE', messagesKey, 0, -1)
             local messages = {}
@@ -127,6 +133,15 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
                 -- Check if the key still exists
                 if redis.call('EXISTS', key) == 1 then
                     local msgJson = redis.call('GET', key)
+                    if offset > 0 then
+                        -- Update packetId using offset value
+                        local msg = cjson.decode(msgJson)
+                        msg.packetId = msg.packetId - offset
+                        if msg.packetId < 1 then
+                            msg.packetId = msg.packetId + 0xffff
+                        end
+                        msgJson = cjson.encode(msg)
+                    end
                     table.insert(messages, msgJson)
                 else
                     -- If the key does not exist, remove it from the sorted set
@@ -138,6 +153,7 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
     private static final String REMOVE_MESSAGES_SCRIPT = """
             local messagesKey = KEYS[1]
             local lastPacketIdKey = KEYS[2]
+            local offsetKey = KEYS[3]
             -- Get all elements from the sorted set
             local elements = redis.call('ZRANGE', messagesKey, 0, -1)
             -- Delete each associated key entry
@@ -148,11 +164,23 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             redis.call('DEL', messagesKey)
             -- Delete the last packet id key
             redis.call('DEL', lastPacketIdKey)
+            -- Delete the offset key
+            redis.call('DEL', offsetKey)
             return "OK"
             """;
     private static final String REMOVE_MESSAGE_SCRIPT = """
             local messagesKey = KEYS[1]
+            local offsetKey = KEYS[2]
             local packetId = ARGV[1]
+            -- Retrieve the offset value
+            local offset = tonumber(redis.call('GET', offsetKey)) or 0
+            if offset > 0 then
+                -- Adjust the packetId using the offset
+                packetId = packetId + offset
+                if packetId > 0xffff then
+                    packetId = packetId - 0xffff
+                end
+            end
             -- Construct the message key
             local msgKey = messagesKey .. "_" .. packetId
             -- Remove the message from the sorted set
@@ -164,6 +192,15 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
     private static final String UPDATE_PACKET_TYPE_SCRIPT = """
             local messagesKey = KEYS[1]
             local packetId = ARGV[1]
+            -- Retrieve the offset value
+            local offset = tonumber(redis.call('GET', offsetKey)) or 0
+            if offset > 0 then
+                -- Adjust the packetId using the offset
+                packetId = packetId + offset
+                if packetId > 0xffff then
+                    packetId = packetId - 0xffff
+                end
+            end
             -- Construct the message key
             local msgKey = messagesKey .. "_" .. packetId
             -- Fetch the message from the key-value store
@@ -270,19 +307,20 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
         }
         byte[] messagesCacheKeyBytes = ClientIdMessagesCacheKey.toBytesKey(clientId, cachePrefix);
         byte[] lastPacketIdKeyBytes = ClientIdLastPacketIdCacheKey.toBytesKey(clientId, cachePrefix);
+        byte[] packetIdOffsetKeyBytes = ClientIdPacketIdOffsetCacheKey.toBytesKey(clientId, cachePrefix);
         byte[] messagesBytes = JacksonUtil.writeValueAsBytes(devicePublishMessages);
         RedisFuture<Long> prevPacketIdFuture = connectionManager.evalShaAsync(ADD_MESSAGES_SCRIPT_SHA, ScriptOutputType.INTEGER,
-                new byte[][]{messagesCacheKeyBytes, lastPacketIdKeyBytes}, messagesLimitBytes, messagesBytes, defaultTtlBytes);
+                new byte[][]{messagesCacheKeyBytes, lastPacketIdKeyBytes, packetIdOffsetKeyBytes}, messagesLimitBytes, messagesBytes, defaultTtlBytes);
         return prevPacketIdFuture.exceptionallyCompose(throwable -> {
             if (throwable instanceof RedisNoScriptException) {
                 CompletableFuture<Void> loadScriptFuture = processLoadScriptAsync(throwable, ADD_MESSAGES_SCRIPT_SHA, ADD_MESSAGES_SCRIPT);
                 CompletableFuture<Long> retryFuture = loadScriptFuture.thenCompose(__ ->
                         connectionManager.evalShaAsync(ADD_MESSAGES_SCRIPT_SHA, ScriptOutputType.INTEGER,
-                                new byte[][]{messagesCacheKeyBytes, lastPacketIdKeyBytes}, messagesLimitBytes, messagesBytes, defaultTtlBytes));
+                                new byte[][]{messagesCacheKeyBytes, lastPacketIdKeyBytes, packetIdOffsetKeyBytes}, messagesLimitBytes, messagesBytes, defaultTtlBytes));
                 return retryFuture.exceptionallyCompose(retryThrowable -> {
                     log.debug("Falling back to eval due to exception on retry sha evaluation of saveAndReturnPreviousPacketId: ", retryThrowable);
                     return connectionManager.evalAsync(ADD_MESSAGES_SCRIPT, ScriptOutputType.INTEGER,
-                            new byte[][]{messagesCacheKeyBytes, lastPacketIdKeyBytes}, messagesLimitBytes, messagesBytes, defaultTtlBytes);
+                            new byte[][]{messagesCacheKeyBytes, lastPacketIdKeyBytes, packetIdOffsetKeyBytes}, messagesLimitBytes, messagesBytes, defaultTtlBytes);
                 });
             }
             throw new CompletionException(throwable);
@@ -295,18 +333,19 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             log.trace("Find persisted messages, clientId - {}", clientId);
         }
         byte[] messagesCacheKeyBytes = ClientIdMessagesCacheKey.toBytesKey(clientId, cachePrefix);
+        byte[] packetIdOffsetKeyBytes = ClientIdPacketIdOffsetCacheKey.toBytesKey(clientId, cachePrefix);
         RedisFuture<List<byte[]>> messagesFuture = connectionManager.evalShaAsync(GET_MESSAGES_SCRIPT_SHA, ScriptOutputType.MULTI,
-                new byte[][]{messagesCacheKeyBytes}, messagesLimitBytes);
+                new byte[][]{messagesCacheKeyBytes, packetIdOffsetKeyBytes}, messagesLimitBytes);
         return messagesFuture.exceptionallyCompose(throwable -> {
             if (throwable instanceof RedisNoScriptException) {
                 CompletableFuture<Void> loadScriptFuture = processLoadScriptAsync(throwable, GET_MESSAGES_SCRIPT_SHA, GET_MESSAGES_SCRIPT);
                 CompletableFuture<List<byte[]>> retryFuture = loadScriptFuture.thenCompose(__ ->
                         connectionManager.evalShaAsync(GET_MESSAGES_SCRIPT_SHA, ScriptOutputType.MULTI,
-                                new byte[][]{messagesCacheKeyBytes}, messagesLimitBytes));
+                                new byte[][]{messagesCacheKeyBytes, packetIdOffsetKeyBytes}, messagesLimitBytes));
                 return retryFuture.exceptionallyCompose(retryThrowable -> {
                     log.debug("Falling back to eval due to exception on retry sha evaluation of findPersistedMessages: ", retryThrowable);
                     return connectionManager.evalAsync(GET_MESSAGES_SCRIPT, ScriptOutputType.MULTI,
-                            new byte[][]{messagesCacheKeyBytes}, messagesLimitBytes);
+                            new byte[][]{messagesCacheKeyBytes, packetIdOffsetKeyBytes}, messagesLimitBytes);
                 });
             }
             throw new CompletionException(throwable);
@@ -323,15 +362,17 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
         }
         byte[] messagesCacheKeyBytes = ClientIdMessagesCacheKey.toBytesKey(clientId, cachePrefix);
         byte[] lastPacketIdKeyBytes = ClientIdLastPacketIdCacheKey.toBytesKey(clientId, cachePrefix);
-        RedisFuture<String> removeFuture = connectionManager.evalShaAsync(REMOVE_MESSAGES_SCRIPT_SHA, ScriptOutputType.STATUS, messagesCacheKeyBytes, lastPacketIdKeyBytes);
+        byte[] packetIdOffsetKeyBytes = ClientIdPacketIdOffsetCacheKey.toBytesKey(clientId, cachePrefix);
+        RedisFuture<String> removeFuture = connectionManager.evalShaAsync(REMOVE_MESSAGES_SCRIPT_SHA, ScriptOutputType.STATUS,
+                new byte[][]{messagesCacheKeyBytes, packetIdOffsetKeyBytes}, lastPacketIdKeyBytes);
         return removeFuture.exceptionallyCompose(throwable -> {
             if (throwable instanceof RedisNoScriptException) {
                 CompletableFuture<Void> loadScriptFuture = processLoadScriptAsync(throwable, REMOVE_MESSAGES_SCRIPT_SHA, REMOVE_MESSAGES_SCRIPT);
                 CompletableFuture<String> retryFuture = loadScriptFuture.thenCompose(__ ->
-                        connectionManager.evalShaAsync(REMOVE_MESSAGES_SCRIPT_SHA, ScriptOutputType.STATUS, messagesCacheKeyBytes, lastPacketIdKeyBytes));
+                        connectionManager.evalShaAsync(REMOVE_MESSAGES_SCRIPT_SHA, ScriptOutputType.STATUS, new byte[][]{messagesCacheKeyBytes, packetIdOffsetKeyBytes}, lastPacketIdKeyBytes));
                 return retryFuture.exceptionallyCompose(retryThrowable -> {
                     log.debug("Falling back to eval due to exception on retry sha evaluation of removePersistedMessages: ", retryThrowable);
-                    return connectionManager.evalAsync(REMOVE_MESSAGES_SCRIPT, ScriptOutputType.STATUS, messagesCacheKeyBytes, lastPacketIdKeyBytes);
+                    return connectionManager.evalAsync(REMOVE_MESSAGES_SCRIPT, ScriptOutputType.STATUS, new byte[][]{messagesCacheKeyBytes, packetIdOffsetKeyBytes}, lastPacketIdKeyBytes);
                 });
             }
             throw new CompletionException(throwable);
@@ -344,19 +385,20 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             log.trace("Removing persisted message, clientId - {}, packetId - {}", clientId, packetId);
         }
         byte[] messagesCacheKeyBytes = ClientIdMessagesCacheKey.toBytesKey(clientId, cachePrefix);
+        byte[] packetIdOffsetKeyBytes = ClientIdPacketIdOffsetCacheKey.toBytesKey(clientId, cachePrefix);
         byte[] packetIdBytes = intToBytes(packetId);
         RedisFuture<String> removeFuture = connectionManager.evalShaAsync(REMOVE_MESSAGE_SCRIPT_SHA, ScriptOutputType.STATUS,
-                new byte[][]{messagesCacheKeyBytes}, packetIdBytes);
+                new byte[][]{messagesCacheKeyBytes, packetIdOffsetKeyBytes}, packetIdBytes);
         return removeFuture.exceptionallyCompose(throwable -> {
             if (throwable instanceof RedisNoScriptException) {
                 CompletableFuture<Void> loadScriptFuture = processLoadScriptAsync(throwable, REMOVE_MESSAGE_SCRIPT_SHA, REMOVE_MESSAGE_SCRIPT);
                 CompletableFuture<String> retryFuture = loadScriptFuture.thenCompose(__ ->
                         connectionManager.evalShaAsync(REMOVE_MESSAGE_SCRIPT_SHA, ScriptOutputType.STATUS,
-                                new byte[][]{messagesCacheKeyBytes}, packetIdBytes));
+                                new byte[][]{messagesCacheKeyBytes, packetIdOffsetKeyBytes}, packetIdBytes));
                 return retryFuture.exceptionallyCompose(retryThrowable -> {
                     log.debug("Falling back to eval due to exception on retry sha evaluation of removePersistedMessage: ", retryThrowable);
                     return connectionManager.evalAsync(Objects.requireNonNull(REMOVE_MESSAGE_SCRIPT), ScriptOutputType.STATUS,
-                            new byte[][]{messagesCacheKeyBytes}, packetIdBytes);
+                            new byte[][]{messagesCacheKeyBytes, packetIdOffsetKeyBytes}, packetIdBytes);
                 });
             }
             throw new CompletionException(throwable);
@@ -369,19 +411,20 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             log.trace("Update packet received, clientId - {}, packetId - {}", clientId, packetId);
         }
         byte[] messagesCacheKeyBytes = ClientIdMessagesCacheKey.toBytesKey(clientId, cachePrefix);
+        byte[] packetIdOffsetKeyBytes = ClientIdPacketIdOffsetCacheKey.toBytesKey(clientId, cachePrefix);
         byte[] packetIdBytes = intToBytes(packetId);
         RedisFuture<String> updateFuture = connectionManager.evalShaAsync(UPDATE_PACKET_TYPE_SCRIPT_SHA, ScriptOutputType.STATUS,
-                new byte[][]{messagesCacheKeyBytes}, packetIdBytes);
+                new byte[][]{messagesCacheKeyBytes, packetIdOffsetKeyBytes}, packetIdBytes);
         return updateFuture.exceptionallyCompose(throwable -> {
             if (throwable instanceof RedisNoScriptException) {
                 CompletableFuture<Void> loadScriptFuture = processLoadScriptAsync(throwable, UPDATE_PACKET_TYPE_SCRIPT_SHA, UPDATE_PACKET_TYPE_SCRIPT);
                 CompletableFuture<String> retryFuture = loadScriptFuture.thenCompose(__ ->
                         connectionManager.evalShaAsync(UPDATE_PACKET_TYPE_SCRIPT_SHA, ScriptOutputType.STATUS,
-                                new byte[][]{messagesCacheKeyBytes}, packetIdBytes));
+                                new byte[][]{messagesCacheKeyBytes, packetIdOffsetKeyBytes}, packetIdBytes));
                 return retryFuture.exceptionallyCompose(retryThrowable -> {
                     log.debug("Falling back to eval due to exception on retry sha evaluation of updatePacketReceived: ", retryThrowable);
                     return connectionManager.evalAsync(UPDATE_PACKET_TYPE_SCRIPT, ScriptOutputType.STATUS,
-                            new byte[][]{messagesCacheKeyBytes}, packetIdBytes);
+                            new byte[][]{messagesCacheKeyBytes, packetIdOffsetKeyBytes}, packetIdBytes);
                 });
             }
             throw new CompletionException(throwable);
