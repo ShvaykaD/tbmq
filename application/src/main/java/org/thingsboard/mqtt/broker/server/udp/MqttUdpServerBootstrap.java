@@ -1,12 +1,12 @@
 /**
  * Copyright © 2016-2025 The Thingsboard Authors
- * <p>
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * <p>
- * http://www.apache.org/licenses/LICENSE-2.0
- * <p>
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -20,6 +20,7 @@ import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.epoll.Epoll;
 import io.netty.channel.epoll.EpollDatagramChannel;
+import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.DatagramChannel;
 import io.netty.channel.socket.nio.NioDatagramChannel;
@@ -65,6 +66,7 @@ public class MqttUdpServerBootstrap {
     private final MqttUdpChannelInitializer mqttUdpChannelInitializer;
 
     private EventLoopGroup workerGroup;
+    private Class<? extends DatagramChannel> channelClazz;
     private Channel channel;
 
     public void init() throws InterruptedException {
@@ -72,9 +74,19 @@ public class MqttUdpServerBootstrap {
         ResourceLeakDetector.setLevel(ResourceLeakDetector.Level.valueOf(getLeakDetectorLevel().toUpperCase()));
 
         log.info("[{}] Starting MQTT-SN server...", SERVER_NAME);
-        workerGroup = new NioEventLoopGroup(workerGroupThreadCount);
+
+        if (Epoll.isAvailable()) {
+            log.info("[{}] Using EpollDatagramChannel for UDP communication.", SERVER_NAME);
+            workerGroup = new EpollEventLoopGroup(workerGroupThreadCount);
+            channelClazz = EpollDatagramChannel.class;
+        } else {
+            log.info("[{}] Using NioDatagramChannel (default) for UDP communication.", SERVER_NAME);
+            workerGroup = new NioEventLoopGroup(workerGroupThreadCount);
+            channelClazz = NioDatagramChannel.class;
+        }
+
         Bootstrap b = new Bootstrap();
-        b.group(workerGroup).channel(getChannelClazz()).handler(mqttUdpChannelInitializer);
+        b.group(workerGroup).channel(channelClazz).handler(mqttUdpChannelInitializer);
 
         channel = b.bind(new InetSocketAddress(host, port)).sync().channel();
         log.info("[{}] MQTT-SN server started on port {}!", SERVER_NAME, getPort());
@@ -100,12 +112,4 @@ public class MqttUdpServerBootstrap {
         log.info("MQTT-SN UDP server stopped.");
     }
 
-    private Class<? extends DatagramChannel> getChannelClazz() {
-        if (Epoll.isAvailable()) {
-            log.info("Using EpollDatagramChannel for UDP communication.");
-            return EpollDatagramChannel.class;
-        }
-        log.info("Using NioDatagramChannel (default) for UDP communication.");
-        return NioDatagramChannel.class;
-    }
 }

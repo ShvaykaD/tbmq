@@ -15,14 +15,23 @@
  */
 package org.thingsboard.mqtt.broker.server.udp;
 
-import lombok.Getter;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.thingsboard.mqtt.broker.service.historical.stats.TbMessageStatsReportClient;
 
-@Getter
-@Component
-public class MqttUdpServerContext {
+@Service
+@RequiredArgsConstructor
+public class MqttSnHandlerFactoryImpl implements MqttSnHandlerFactory {
 
-    @Value("${listener.udp.netty.max_payload_size}")
-    private int maxPayloadSize;
+    private final MqttSnHandlerCtx mqttSnHandlerCtx;
+
+    @Override
+    public MqttSnSessionHandler create(String initializerName) {
+        return new MqttSnSessionHandler(mqttSnHandlerCtx, initializerName);
+    }
+
+    @Override
+    public TbMessageStatsReportClient getTbMessageStatsReportClient() {
+        return null;
+    }
 }

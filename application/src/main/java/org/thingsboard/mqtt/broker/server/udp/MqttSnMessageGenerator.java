@@ -15,14 +15,5 @@
  */
 package org.thingsboard.mqtt.broker.server.udp;
 
-import lombok.Getter;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
-
-@Getter
-@Component
-public class MqttUdpServerContext {
-
-    @Value("${listener.udp.netty.max_payload_size}")
-    private int maxPayloadSize;
+public interface MqttSnMessageGenerator {
 }

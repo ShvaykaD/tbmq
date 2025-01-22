@@ -13,16 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.mqtt.broker.server.udp;
+package org.thingsboard.mqtt.broker.server.udp.msg;
 
 import lombok.Getter;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
+import lombok.RequiredArgsConstructor;
 
 @Getter
-@Component
-public class MqttUdpServerContext {
+@RequiredArgsConstructor
+public class MqttSnPublishMessage implements MqttSnMessage {
 
-    @Value("${listener.udp.netty.max_payload_size}")
-    private int maxPayloadSize;
+    private final int topicId;
+    private final int messageId;
+    private final byte qos;
+    private final byte[] payload;
+
+    @Override
+    public MqttSnMsgType getType() {
+        return MqttSnMsgType.PUBLISH;
+    }
+
 }
