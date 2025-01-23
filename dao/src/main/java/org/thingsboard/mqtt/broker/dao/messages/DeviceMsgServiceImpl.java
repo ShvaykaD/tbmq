@@ -57,14 +57,13 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
     private static final CSVFormat IMPORT_CSV_FORMAT = CSVFormat.Builder.create()
             .setHeader().setSkipHeaderRecord(true).build();
 
-    private static final String ADD_MESSAGES_SCRIPT_SHA = "585eaf8f42fcd697bde5896a1d52957e9b8c1b94";
-    private static final String GET_MESSAGES_SCRIPT_SHA = "be1a4df0569114acd69b50c2a1af7638c91169b1";
+    private static final String ADD_MESSAGES_SCRIPT_SHA = "03523617e20d418371f0a158187bd44b229c1536";
+    private static final String GET_MESSAGES_SCRIPT_SHA = "2b02cce13494ea1d67ae7ba4301deddf915ae1a8";
     private static final String REMOVE_MESSAGES_SCRIPT_SHA = "fdaa0cfde373ab23074b48e7d2a8594aad13a65b";
     private static final String REMOVE_MESSAGE_SCRIPT_SHA = "4839a58972e424a23450c42bd2339f9519aea41d";
     private static final String UPDATE_PACKET_TYPE_SCRIPT_SHA = "6690974a8f168db63b04145654b12c52317afa92";
     private static final String MIGRATE_FROM_POSTGRES_TO_REDIS_SCRIPT_SHA = "76ea84e42d6ab98e646ef8f88b99efd568721926";
 
-    // TODO: consider why we set score = lastPacketId if set is empty instead of set it to 0.
     private static final String ADD_MESSAGES_SCRIPT = """
             local messagesKey = KEYS[1]
             local lastPacketIdKey = KEYS[2]
@@ -109,16 +108,17 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             redis.call('SET', lastPacketIdKey, lastPacketId)
             -- Get the elements to be trimmed
             local numElementsToRemove = redis.call('ZCARD', messagesKey) - maxMessagesSize
+            local currentOffset = tonumber(redis.call('GET', offsetKey)) or 0
             if numElementsToRemove > 0 then
                 local trimmedElements = redis.call('ZRANGE', messagesKey, 0, numElementsToRemove - 1)
                 for _, key in ipairs(trimmedElements) do
                     redis.call('DEL', key)
                     redis.call('ZREM', messagesKey, key)
                 end
-                local currentOffset = tonumber(redis.call('GET', offsetKey)) or 0
-                redis.call('SET', offsetKey, currentOffset + numElementsToRemove)
+                currentOffset = currentOffset + numElementsToRemove;
+                redis.call('SET', offsetKey, currentOffset)
             end
-            return previousPacketId
+            return previousPacketId - currentOffset
             """;
     private static final String GET_MESSAGES_SCRIPT = """
             local messagesKey = KEYS[1]
@@ -129,6 +129,8 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
             -- Get the range of elements from the sorted set
             local elements = redis.call('ZRANGE', messagesKey, 0, -1)
             local messages = {}
+            -- Boolean parameter to track if we have at least one expired or removed message
+            local messagesRemoved = false
             for _, key in ipairs(elements) do
                 -- Check if the key still exists
                 if redis.call('EXISTS', key) == 1 then
@@ -146,7 +148,14 @@ public class DeviceMsgServiceImpl implements DeviceMsgService {
                 else
                     -- If the key does not exist, remove it from the sorted set
                     redis.call('ZREM', messagesKey, key)
+                    -- Update local offset value
+                    offset = offset + 1
+                    messagesRemoved = true
                 end
+            end
+            if messagesRemoved then
+                -- Update offset key value
+                redis.call('SET', offsetKey, offset)
             end
             return messages
             """;
