@@ -17,20 +17,86 @@
 apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 
-availabilityZones: [ us-east-1a,us-east-1b,us-east-1c ]
+availabilityZones: [ eu-west-1a,eu-west-1b ]
 
 metadata:
   name: tbmq
-  region: us-east-1
-  version: "1.30"
+  region: eu-west-1
+  version: "1.31"
+
+iam:
+  withOIDC: true
+  serviceAccounts:
+    - metadata:
+        name: aws-load-balancer-controller
+        namespace: kube-system
+      wellKnownPolicies:
+        awsLoadBalancerController: true
 
 managedNodeGroups:
-  - name: managed
-    instanceType: m7a.large
+  - name: tbmq-node
+    instanceType: c7a.medium
     desiredCapacity: 2
     maxSize: 2
-    minSize: 1
+    minSize: 0
     labels: { role: tbmq }
-    ssh:
-      allow: true
-      publicKeyName: 'dlandiak' # Note, use your own public key name here
+    privateNetworking: true
+    volumeType: gp3
+    volumeSize: 20
+#    subnets:
+#      - eu-west-1a
+
+  - name: tbmq-kafka
+    instanceType: c7a.medium
+    desiredCapacity: 3
+    maxSize: 3
+    minSize: 0
+    labels: { role: kafka }
+    privateNetworking: true
+    volumeType: gp3
+    volumeSize: 20
+#    subnets:
+#      - eu-west-1a
+
+  - name: tbmq-redis
+    instanceType: c7a.medium
+    desiredCapacity: 3
+    maxSize: 3
+    minSize: 0
+    labels: { role: redis }
+    privateNetworking: true
+    volumeType: gp3
+    volumeSize: 20
+#    subnets:
+#      - eu-west-1a
+
+#  - name: tbmq-postgresql
+#    instanceType: c7a.medium
+#    desiredCapacity: 1
+#    maxSize: 1
+#    minSize: 0
+#    labels: { role: postgresql }
+#    privateNetworking: true
+#    volumeType: gp3
+#    volumeSize: 20
+#    subnets:
+#      - eu-west-1a
+
+addons:
+  - name: aws-ebs-csi-driver
+    wellKnownPolicies:      # add IAM and service account
+      ebsCSIController: true
+  - name: aws-efs-csi-driver
+    wellKnownPolicies:      # add IAM and service account
+      efsCSIController: true
+  - name: vpc-cni
+    attachPolicyARNs:
+      - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+    resolveConflicts: overwrite
+  - name: coredns
+    version: latest
+    configurationValues: "{\"replicaCount\":3}"
+    resolveConflicts: overwrite
+  - name: kube-proxy
+    version: latest
+    resolveConflicts: overwrite
