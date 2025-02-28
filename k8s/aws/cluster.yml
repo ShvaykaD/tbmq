@@ -35,7 +35,7 @@ iam:
 
 managedNodeGroups:
   - name: tbmq-node
-    instanceType: c7a.medium
+    instanceType: c7a.large
     desiredCapacity: 2
     maxSize: 2
     minSize: 0
@@ -46,8 +46,18 @@ managedNodeGroups:
 #    subnets:
 #      - eu-west-1a
 
+  - name: tbmq-ie
+    instanceType: c7a.large
+    desiredCapacity: 2
+    maxSize: 2
+    minSize: 0
+    labels: { role: tbmq-ie }
+    privateNetworking: true
+    volumeType: gp3
+    volumeSize: 20
+
   - name: tbmq-kafka
-    instanceType: c7a.medium
+    instanceType: c7a.large
     desiredCapacity: 3
     maxSize: 3
     minSize: 0
@@ -59,7 +69,7 @@ managedNodeGroups:
 #      - eu-west-1a
 
   - name: tbmq-redis
-    instanceType: c7a.medium
+    instanceType: c7a.large
     desiredCapacity: 3
     maxSize: 3
     minSize: 0
