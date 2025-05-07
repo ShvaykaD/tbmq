@@ -17,11 +17,18 @@ package org.thingsboard.mqtt.broker.dao.client;
 
 import org.thingsboard.mqtt.broker.common.data.page.PageData;
 import org.thingsboard.mqtt.broker.common.data.page.PageLink;
-import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProvider;
+import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderDto;
 import org.thingsboard.mqtt.broker.dao.Dao;
 
-public interface MqttClientAuthProviderDao extends Dao<MqttClientAuthProvider> {
+import java.util.UUID;
 
-    PageData<MqttClientAuthProvider> findAll(PageLink pageLink);
+public interface MqttClientAuthProviderDao extends Dao<MqttClientAuthProviderDto> {
 
+    PageData<MqttClientAuthProviderDto> findAll(PageLink pageLink);
+
+    PageData<MqttClientAuthProviderDto> findAllEnabled(PageLink pageLink);
+
+    boolean enableById(UUID id);
+
+    boolean disableById(UUID id);
 }

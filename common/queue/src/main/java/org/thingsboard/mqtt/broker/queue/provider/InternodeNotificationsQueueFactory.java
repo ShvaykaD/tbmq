@@ -13,20 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.mqtt.broker.service.auth.providers;
+package org.thingsboard.mqtt.broker.queue.provider;
 
-import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderConfiguration;
-import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderType;
-import org.thingsboard.mqtt.broker.exception.AuthenticationException;
+import org.thingsboard.mqtt.broker.gen.queue.InternodeNotificationProto;
+import org.thingsboard.mqtt.broker.queue.TbQueueConsumer;
+import org.thingsboard.mqtt.broker.queue.TbQueueProducer;
+import org.thingsboard.mqtt.broker.queue.common.TbProtoQueueMsg;
 
-public interface MqttClientAuthProvider {
+public interface InternodeNotificationsQueueFactory {
 
-    MqttClientAuthProviderType getType();
+    TbQueueProducer<TbProtoQueueMsg<InternodeNotificationProto>> createProducer(String serviceId);
 
-    boolean isEnabled();
-
-    MqttClientAuthProviderConfiguration getConfiguration();
-
-    AuthResponse authenticate(AuthContext authContext) throws AuthenticationException;
+    TbQueueConsumer<TbProtoQueueMsg<InternodeNotificationProto>> createConsumer(String topic, String serviceId);
 
 }

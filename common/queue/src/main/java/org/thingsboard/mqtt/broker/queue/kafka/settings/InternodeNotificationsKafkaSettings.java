@@ -13,20 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.mqtt.broker.service.auth.providers;
+package org.thingsboard.mqtt.broker.queue.kafka.settings;
 
-import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderConfiguration;
-import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderType;
-import org.thingsboard.mqtt.broker.exception.AuthenticationException;
+import lombok.Data;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
-public interface MqttClientAuthProvider {
+@Data
+@Component
+@ConfigurationProperties(prefix = "queue.kafka.internode-notifications")
+public class InternodeNotificationsKafkaSettings extends AbstractKafkaSettings {
 
-    MqttClientAuthProviderType getType();
-
-    boolean isEnabled();
-
-    MqttClientAuthProviderConfiguration getConfiguration();
-
-    AuthResponse authenticate(AuthContext authContext) throws AuthenticationException;
+    private String topicPrefix;
+    private String topicProperties;
+    private String additionalProducerConfig;
+    private String additionalConsumerConfig;
 
 }

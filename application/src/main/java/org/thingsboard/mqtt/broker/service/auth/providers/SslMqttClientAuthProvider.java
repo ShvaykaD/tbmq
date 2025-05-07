@@ -18,15 +18,17 @@ package org.thingsboard.mqtt.broker.service.auth.providers;
 import io.netty.handler.ssl.SslHandler;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.Cache;
-import org.springframework.stereotype.Service;
 import org.thingsboard.mqtt.broker.cache.CacheConstants;
 import org.thingsboard.mqtt.broker.cache.CacheNameResolver;
 import org.thingsboard.mqtt.broker.common.data.client.credentials.ClientTypeSslMqttCredentials;
 import org.thingsboard.mqtt.broker.common.data.client.credentials.SslMqttCredentials;
 import org.thingsboard.mqtt.broker.common.data.security.ClientCredentialsType;
+import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderConfiguration;
+import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderDto;
+import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderType;
 import org.thingsboard.mqtt.broker.common.data.security.MqttClientCredentials;
+import org.thingsboard.mqtt.broker.common.data.security.ssl.SslAuthProviderConfiguration;
 import org.thingsboard.mqtt.broker.common.util.JacksonUtil;
 import org.thingsboard.mqtt.broker.dao.client.MqttClientCredentialsService;
 import org.thingsboard.mqtt.broker.dao.client.credentials.SslCredentialsCacheValue;
@@ -53,16 +55,29 @@ import static org.thingsboard.mqtt.broker.service.auth.providers.SslAuthFailure.
 import static org.thingsboard.mqtt.broker.service.auth.providers.SslAuthFailure.X_509_AUTH_FAILURE;
 
 @Slf4j
-@Service
 @RequiredArgsConstructor
 public class SslMqttClientAuthProvider implements MqttClientAuthProvider {
 
-    private final MqttClientCredentialsService clientCredentialsService;
     private final AuthorizationRuleService authorizationRuleService;
+    private final MqttClientCredentialsService clientCredentialsService;
     private final CacheNameResolver cacheNameResolver;
+    private final MqttClientAuthProviderDto configuration;
 
-    @Value("${security.mqtt.ssl.skip_validity_check_for_client_cert:false}")
-    private boolean skipValidityCheckForClientCert;
+    // TODO: consider if this should be renamed to X_509_CERTIFICATE_CHAIN. See AuthProviderType for more details.
+    @Override
+    public MqttClientAuthProviderType getType() {
+        return MqttClientAuthProviderType.SSL;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return configuration.isEnabled();
+    }
+
+    @Override
+    public MqttClientAuthProviderConfiguration getConfiguration() {
+        return configuration.getConfiguration();
+    }
 
     @Override
     public AuthResponse authenticate(AuthContext authContext) throws AuthenticationException {
@@ -169,7 +184,8 @@ public class SslMqttClientAuthProvider implements MqttClientAuthProvider {
 
     private void checkCertValidity(String clientId, X509Certificate certificate) throws AuthenticationException {
         try {
-            if (!skipValidityCheckForClientCert) {
+            SslAuthProviderConfiguration sslConfig = (SslAuthProviderConfiguration) configuration.getConfiguration();
+            if (!sslConfig.isSkipValidityCheckForClientCert()) {
                 certificate.checkValidity();
             }
         } catch (Exception e) {

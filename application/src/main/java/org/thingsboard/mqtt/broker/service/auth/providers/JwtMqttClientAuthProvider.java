@@ -15,18 +15,36 @@
  */
 package org.thingsboard.mqtt.broker.service.auth.providers;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderConfiguration;
+import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderDto;
 import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderType;
 import org.thingsboard.mqtt.broker.exception.AuthenticationException;
 
-public interface MqttClientAuthProvider {
+@Slf4j
+@RequiredArgsConstructor
+public class JwtMqttClientAuthProvider implements MqttClientAuthProvider {
 
-    MqttClientAuthProviderType getType();
+    private final MqttClientAuthProviderDto configuration;
 
-    boolean isEnabled();
+    @Override
+    public MqttClientAuthProviderType getType() {
+        return MqttClientAuthProviderType.JWT;
+    }
 
-    MqttClientAuthProviderConfiguration getConfiguration();
+    @Override
+    public boolean isEnabled() {
+        return configuration.isEnabled();
+    }
 
-    AuthResponse authenticate(AuthContext authContext) throws AuthenticationException;
+    @Override
+    public MqttClientAuthProviderConfiguration getConfiguration() {
+        return configuration.getConfiguration();
+    }
 
+    @Override
+    public AuthResponse authenticate(AuthContext authContext) throws AuthenticationException {
+        return AuthResponse.defaultAuthResponse();
+    }
 }

@@ -15,10 +15,37 @@
  */
 package org.thingsboard.mqtt.broker.service.auth.providers;
 
-import java.util.Map;
+import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderDto;
+
+import java.util.List;
+import java.util.UUID;
 
 public interface MqttClientAuthProviderManager {
 
-    Map<AuthProviderType, MqttClientAuthProvider> getActiveAuthProviders();
+    List<MqttClientAuthProvider> getOrderedActiveProviders();
+
+    boolean isAuthEnabled();
+
+    boolean isJwtEnabled();
+
+    boolean isBasicEnabled();
+
+    boolean isSslEnabled();
+
+    boolean isVerifyJwtFirst();
+
+    JwtMqttClientAuthProvider getJwtMqttClientAuthProvider();
+
+    BasicMqttClientAuthProvider getBasicMqttClientAuthProvider();
+
+    SslMqttClientAuthProvider getSslMqttClientAuthProvider();
+
+    void handleProviderUpdate(MqttClientAuthProviderDto dto);
+
+    void handleProviderDelete(UUID id);
+
+    void handleProviderEnable(UUID id);
+
+    void handleProviderDisable(UUID id);
 
 }

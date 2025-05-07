@@ -13,20 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.mqtt.broker.service.auth.providers;
+package org.thingsboard.mqtt.broker.service.mqtt.auth;
 
-import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderConfiguration;
-import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderType;
-import org.thingsboard.mqtt.broker.exception.AuthenticationException;
+import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderDto;
 
-public interface MqttClientAuthProvider {
+import java.util.UUID;
 
-    MqttClientAuthProviderType getType();
+public interface MqttClientAuthProviderManagerService {
 
-    boolean isEnabled();
+    MqttClientAuthProviderDto saveAuthProvider(MqttClientAuthProviderDto authProvider);
 
-    MqttClientAuthProviderConfiguration getConfiguration();
+    void deleteAuthProvider(UUID id);
 
-    AuthResponse authenticate(AuthContext authContext) throws AuthenticationException;
+    void enableAuthProvider(UUID id);
+
+    void disableAuthProvider(UUID id);
 
 }

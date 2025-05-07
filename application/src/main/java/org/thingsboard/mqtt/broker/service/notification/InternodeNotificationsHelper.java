@@ -13,20 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.thingsboard.mqtt.broker.service.auth.providers;
+package org.thingsboard.mqtt.broker.service.notification;
 
-import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderConfiguration;
-import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderType;
-import org.thingsboard.mqtt.broker.exception.AuthenticationException;
+import java.util.List;
 
-public interface MqttClientAuthProvider {
+public interface InternodeNotificationsHelper {
 
-    MqttClientAuthProviderType getType();
+    String getServiceTopic(String serviceId);
 
-    boolean isEnabled();
-
-    MqttClientAuthProviderConfiguration getConfiguration();
-
-    AuthResponse authenticate(AuthContext authContext) throws AuthenticationException;
-
+    List<String> getServiceIds();
 }

@@ -18,19 +18,25 @@ package org.thingsboard.mqtt.broker.dao.client.provider;
 import org.thingsboard.mqtt.broker.common.data.dto.ShortMqttClientAuthProvider;
 import org.thingsboard.mqtt.broker.common.data.page.PageData;
 import org.thingsboard.mqtt.broker.common.data.page.PageLink;
-import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProvider;
+import org.thingsboard.mqtt.broker.common.data.security.MqttClientAuthProviderDto;
 
 import java.util.Optional;
 import java.util.UUID;
 
 public interface MqttClientAuthProviderService {
 
-    MqttClientAuthProvider saveAuthProvider(MqttClientAuthProvider authProvider);
+    MqttClientAuthProviderDto saveAuthProvider(MqttClientAuthProviderDto authProvider);
 
-    Optional<MqttClientAuthProvider> getAuthProviderById(UUID id);
+    Optional<MqttClientAuthProviderDto> getAuthProviderById(UUID id);
 
-    void deleteAuthProvider(UUID id);
+    boolean deleteAuthProvider(UUID id);
 
     PageData<ShortMqttClientAuthProvider> getAuthProviders(PageLink pageLink);
+
+    PageData<MqttClientAuthProviderDto> getEnabledAuthProviders(PageLink pageLink);
+
+    boolean enableAuthProvider(UUID id);
+
+    boolean disableAuthProvider(UUID id);
 
 }
